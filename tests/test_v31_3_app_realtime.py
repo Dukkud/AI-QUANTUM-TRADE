@@ -4,7 +4,7 @@ from src.realtime_training import ASSETS, AGENTS, TIMEFRAMES
 
 def test_health_is_paper_only():
     body = health()
-    assert body['version'] == '33.0.0'
+    assert body['version'] == '33.2.0'
     assert body['mode'] == 'paper'
     assert body['live_trading'] is False
     assert body['emergency_stop'] is True
@@ -13,6 +13,7 @@ def test_health_is_paper_only():
     assert body['evidence_gate'] == 'fail_closed_research_only'
     assert body['agent_decision_layer'] == 'q1-q8_research_only'
     assert body['v33_candidate'] == 'research_only'
+    assert body['evidence_machine'] == 'non_blocking_shadow'
 
 
 def test_realtime_policy_exposes_all_assets_timeframes_and_agents():
@@ -41,6 +42,7 @@ def test_realtime_tick_enters_paper_world_without_live_execution():
     assert body['tick']['feed_latency_ms'] == 10
     assert body['tick']['training_only'] is True
     assert body['paper']['market']['BTCUSDT']['price'] == 100000.0
+    assert body['shadow']['research_only'] is True
     assert body['live_execution'] is False
 
 
