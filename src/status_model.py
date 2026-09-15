@@ -52,7 +52,7 @@ class AgentStatusRecord:
 
 def classify_performance(*, telemetry_verified: bool, degraded: bool = False,
                          quarantined: bool = False, promotable: bool = False) -> PerformanceStatus:
-    """Fail closed for performance claims, without treating missing data as failure."""
+    """Missing telemetry is UNVERIFIED; degradation requires evidence."""
     if quarantined:
         return PerformanceStatus.QUARANTINE
     if degraded:
@@ -67,7 +67,7 @@ def classify_performance(*, telemetry_verified: bool, degraded: bool = False,
 def build_agent_status(agent: str, *, active: bool = True,
                        telemetry_verified: bool = False, degraded: bool = False,
                        quarantined: bool = False, promotable: bool = False,
-                       risk_status: RiskStatus = RiskStatus.UNVERIFIED,
+                       risk_status: RiskStatus = RiskStatus.ENABLED,
                        execution_gate: ExecutionGate = ExecutionGate.PAPER) -> AgentStatusRecord:
     performance = classify_performance(
         telemetry_verified=telemetry_verified,
@@ -93,7 +93,7 @@ def build_agent_status(agent: str, *, active: bool = True,
 
 
 def build_all_agent_status(agents: Mapping[str, object]) -> dict[str, dict]:
-    """Produce the canonical Q1-Q8 status table from the paper-world/adaptive state."""
+    """Produce the canonical Q1-Q8 status table from paper-world/adaptive state."""
     result = {}
     for agent, obj in agents.items():
         active = bool(getattr(obj, "active", True))
@@ -103,7 +103,7 @@ def build_all_agent_status(agents: Mapping[str, object]) -> dict[str, dict]:
             active=active,
             telemetry_verified=False,
             quarantined=locked,
-            risk_status=RiskStatus.QUARANTINED if locked else RiskStatus.UNVERIFIED,
-            execution_gate=ExecutionGate.LIVE_BLOCKED,
+            risk_status=RiskStatus.QUARANTINED if locked else RiskStatus.ENABLED,
+            execution_gate=ExecutionGate.PAPER,
         ).to_dict()
     return result
