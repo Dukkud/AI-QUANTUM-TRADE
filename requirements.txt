@@ -4,3 +4,7 @@ pydantic>=2.8,<3
 pandas>=2.2,<3
 numpy>=2.0,<3
 pytest>=8,<9
+ccxt>=4.5,<5
+websockets>=15,<16
+requests>=2.32,<3
+MetaTrader5>=5.0,<6; platform_system == "Windows"
