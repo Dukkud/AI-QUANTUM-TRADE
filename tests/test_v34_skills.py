@@ -20,5 +20,5 @@ def test_critical_learning_skills_are_present():
 
 def test_financial_research_skill_is_q6_scoped():
     row = next(x for x in registry() if x["name"] == "catalyst-calendar")
-    assert row["role"] == ["Q6", "Q8"]
+    assert row["agents"] == ("Q6", "Q8")
     assert row["install"].startswith("npx skills add")
