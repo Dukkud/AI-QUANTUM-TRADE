@@ -5,10 +5,10 @@ def test_metrics_are_cost_aware_and_deterministic():
     trades = [ResearchTrade(1.0, 0.8), ResearchTrade(-0.5, 0.2), ResearchTrade(0.5, 0.7)]
     result = metrics(trades, cost_r_per_trade=0.1)
     assert result.trades == 3
-    assert result.net_r == 0.7
+    assert abs(result.net_r - 0.7) < 1e-12
     assert result.win_rate == 2 / 3
     assert result.profit_factor > 1
-    assert result.max_drawdown_r == 0.4
+    assert abs(result.max_drawdown_r - 0.6) < 1e-12
 
 
 def test_feature_attribution_ranks_positive_incremental_edge():
@@ -34,8 +34,8 @@ def test_feature_attribution_ranks_positive_incremental_edge():
     assert result["ranking"][0]["net_r_delta_vs_baseline"] > 0
 
 
-def test_walk_forward_is_causal_and_non_overlapping_in_oos_direction():
-    trades = [ResearchTrade(0.1 if i % 2 == 0 else -0.05, 0.6 if i % 2 == 0 else 0.4) for i in range(12)]
+def test_walk_forward_is_causal_and_sequential():
+    trades = [ResearchTrade(0.1 if i % 2 == 0 else -0.05, 0.6 if i % 2 == 0 else 0.4) for i in range(14)]
     windows = walk_forward(trades, train_size=4, validation_size=2, oos_size=2)
     assert len(windows) == 4
     assert [w["fold"] for w in windows] == [1, 2, 3, 4]
