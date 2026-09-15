@@ -1,36 +1,33 @@
-# AI-QUANTUM v33 — Proven Research Candidate
+# AI-QUANTUM v33.1 — CI + Persistent Hourly Telemetry
 
-## Scope
-v33 is the first milestone where Q1-Q8 have explicit analytical contracts rather than only labels inside the paper world. The layer is still research/paper-only.
+## Priority 1: CI
+The CI workflow installs requirements, compiles `src` and `app.py`, runs pytest with `PYTHONPATH=.`, and performs a secret-pattern scan. v33.1 updates stale application-version assertions from the previous milestone.
 
-## Q1-Q8 contract
-| Agent | Required evidence | No evidence result |
-|---|---|---|
-| Q1 | causal OHLC history, regime features | INSUFFICIENT_DATA/HOLD |
-| Q2 | causal highs/lows and structure | INSUFFICIENT_DATA/HOLD |
-| Q3 | native bid/ask and buy/sell flow | DATA_UNAVAILABLE/HOLD |
-| Q4 | >=30 realized R observations + probability + costs | INSUFFICIENT_DATA/HOLD |
-| Q5 | causal range/geometry | INSUFFICIENT_DATA/HOLD |
-| Q6 | verified macro/news feed | DATA_UNAVAILABLE/HOLD |
-| Q7 | versioned calibrated model + dataset | DATA_UNAVAILABLE/HOLD |
-| Q8 | data/risk/account/safety state | VETO on any hard failure |
+## Priority 2: Persistent Hourly Telemetry Ledger
+`src/hourly_telemetry.py` provides an append-only JSONL ledger. Default path is `data/hourly_telemetry.jsonl`, configurable with `AI_QUANTUM_TELEMETRY_PATH`.
 
-## Decision semantics
-`HOLD` is a decision only when evidence is sufficient and the calculated edge does not clear the gate. `N/A -> HOLD` is no longer represented as a valid trading decision: missing evidence is explicitly classified and propagated to Q8.
+Each hourly record stores:
+- trades
+- P&L
+- win rate
+- profit factor
+- EV
+- drawdown
+- MAE/MFE
+- Brier
+- agent weights
+- regime
+- learning / experience
+- loss debt
+- quarantine
+- errors
+- gate state
+- schema version
 
-## v33 candidate gate
-The candidate gate checks:
-- net expectancy after commission, spread, slippage and latency assumptions;
-- out-of-sample walk-forward windows;
-- calibration via Brier score;
-- regime robustness;
-- per-agent attribution;
-- anti-overfit/leakage checks.
+The application persists the paper-world hour on paper/realtime ticks and exposes `/telemetry/hourly` plus `/telemetry/hourly/close`. The hourly report also exposes a numeric Hour N vs Hour N-1 comparison.
 
-Promotion can only be `PROMOTE_RESEARCH`. There is no `PROMOTE_LIVE` state in v33.
+## Semantics
+A missing prior hour is explicitly reported as `NO_PREVIOUS_HOUR`. No metric is fabricated. Missing upstream evidence remains missing rather than being converted to a trading signal.
 
-## Live safety
-All new paths expose `research_only=true` and `live_execution=false`. Live trading remains behind the existing account verification, explicit client confirmation, safety gates and emergency-stop architecture.
-
-## Data limitation
-This release does **not** claim that a real external XAUUSD/BTCUSDT historical dataset has passed the full v33 evidence gate. The historical edge conclusion remains conditional until a versioned dataset with causal timestamps, defensible execution costs and independent review is supplied.
+## Safety
+Telemetry is observational and research/paper-only. It cannot enable live execution.
