@@ -13,7 +13,7 @@ def bars(n=120):
 
 
 def test_all_q_agents_exist_and_fail_closed_when_evidence_missing():
-    r=run_agent_council({"bars":bars(),"data_quality_ok":False,"account_ready":False})
+    r=run_agent_council({"bars":bars(),"data_quality_ok":False,"live_requested":False})
     assert [a["agent"] for a in r["agents"]]==["Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8"]
     assert r["quantum_decision"]=="HOLD"
     assert r["hard_veto"] is True
@@ -21,21 +21,21 @@ def test_all_q_agents_exist_and_fail_closed_when_evidence_missing():
 
 
 def test_q4_requires_real_history_and_positive_ev():
-    r=run_agent_council({"bars":bars(),"historical_r":[1,-1]*20,"predicted_probability":0.6,"cost_r_per_trade":0.05,"data_quality_ok":True,"account_ready":True,"emergency_stop":False})
+    r=run_agent_council({"bars":bars(),"historical_r":[1,-1]*20,"predicted_probability":0.6,"cost_r_per_trade":0.05,"data_quality_ok":True,"live_requested":False})
     q4=next(x for x in r["agents"] if x["agent"]=="Q4")
     assert q4["status"]=="ACTIVE"
     assert "ev_net" in q4["evidence"]
 
 
 def test_q3_refuses_synthetic_order_flow():
-    r=run_agent_council({"bars":bars(),"data_quality_ok":True,"account_ready":True,"emergency_stop":False})
+    r=run_agent_council({"bars":bars(),"data_quality_ok":True,"live_requested":False})
     q3=next(x for x in r["agents"] if x["agent"]=="Q3")
     assert q3["status"]=="DATA_UNAVAILABLE"
     assert q3["decision"]=="HOLD"
 
 
-def test_q8_hard_veto_is_explicit():
-    r=run_agent_council({"bars":bars(),"data_quality_ok":True,"account_ready":False,"emergency_stop":False})
+def test_q8_hard_veto_is_explicit_for_live_account():
+    r=run_agent_council({"bars":bars(),"data_quality_ok":True,"account_ready":False,"emergency_stop":False,"live_requested":True})
     q8=next(x for x in r["agents"] if x["agent"]=="Q8")
     assert q8["decision"]=="VETO"
     assert "ACCOUNT_NOT_READY" in q8["evidence"]["vetoes"]
