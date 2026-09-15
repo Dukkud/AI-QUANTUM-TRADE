@@ -21,6 +21,7 @@ from src.agent_decision_layer import run_agent_council
 from src.v33_candidate_gate import ExecutionModel, run_v33
 from src.hourly_telemetry import HourlyTelemetryLedger, build_hourly_record
 from src.evidence_machine import EvidenceMachine
+from src.evidence_analytics import EvidenceAnalytics
 
 APP_VERSION = "33.2.0"
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
@@ -64,12 +65,12 @@ def _persist_hourly(force=False):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status":"ok","mode":"paper","training_mode":training_policy.mode,"live_trading":False,"emergency_stop":True,"version":APP_VERSION,"github_integrations":"enabled_research_only","edge_validation":"research_only","evidence_gate":"fail_closed_research_only","market_replay":"deterministic_research_only","agent_decision_layer":"q1-q8_research_only","v33_candidate":"research_only","hourly_telemetry":"persistent_jsonl","evidence_machine":"non_blocking_shadow"}
+    return {"status":"ok","mode":"paper","training_mode":training_policy.mode,"live_trading":False,"emergency_stop":True,"version":APP_VERSION,"github_integrations":"enabled_research_only","edge_validation":"research_only","evidence_gate":"fail_closed_research_only","market_replay":"deterministic_research_only","agent_decision_layer":"q1-q8_research_only","v33_candidate":"research_only","hourly_telemetry":"persistent_jsonl","evidence_machine":"non_blocking_shadow","evidence_analytics":"descriptive_research_only"}
 
 @app.get("/state")
 def state() -> dict[str, Any]:
     _persist_hourly()
-    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False},"agent_decision_layer":{"research_only":True,"live_execution":False},"v33_candidate":{"research_only":True,"live_execution":False},"hourly_telemetry":{"latest":telemetry.latest().as_dict() if telemetry.latest() else None,"previous":telemetry.previous().as_dict() if telemetry.previous() else None,"comparison":telemetry.compare(telemetry.latest(),telemetry.previous()) if telemetry.latest() else {"available":False}},"evidence_machine":evidence.snapshot()}
+    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False},"agent_decision_layer":{"research_only":True,"live_execution":False},"v33_candidate":{"research_only":True,"live_execution":False},"hourly_telemetry":{"latest":telemetry.latest().as_dict() if telemetry.latest() else None,"previous":telemetry.previous().as_dict() if telemetry.previous() else None,"comparison":telemetry.compare(telemetry.latest(),telemetry.previous()) if telemetry.latest() else {"available":False}},"evidence_machine":evidence.snapshot(),"evidence_analytics":EvidenceAnalytics(evidence.attribution_records()).matrix() if hasattr(evidence,"attribution_records") else {"available":False,"reason":"IN_MEMORY_ATTRIBUTION_ONLY"}}
 
 @app.get("/telemetry/hourly")
 def hourly_telemetry() -> dict[str, Any]:
@@ -82,24 +83,23 @@ def close_hourly_telemetry() -> dict[str, Any]:
 
 @app.get("/evidence/machine")
 def evidence_machine() -> dict[str, Any]: return evidence.snapshot()
+@app.get("/evidence/analytics")
+def evidence_analytics() -> dict[str, Any]: return EvidenceAnalytics(evidence.attribution_records()).matrix() if hasattr(evidence,"attribution_records") else {"available":False,"reason":"IN_MEMORY_ATTRIBUTION_ONLY"}
 
 @app.post("/integrations/pine/validate")
 def validate_pine(payload: dict[str, Any]) -> dict[str, object]:
     result=validate_script(str(payload.get("script","")))
     return {"ok":result.ok,"errors":list(result.errors),"warnings":list(result.warnings),"matched_review_terms":list(result.matched_review_terms),"research_only":True}
-
 @app.get("/integrations/github")
 def github_integrations() -> dict[str, object]: return integration_registry()
 @app.post("/integrations/xau/features")
 def xau_feature_endpoint(payload: dict[str, Any]) -> dict[str, object]: return xau_features(payload.get("bars",[]))
 @app.post("/research/agent-council")
 def agent_council_endpoint(payload: dict[str, Any]) -> dict[str, object]: return run_agent_council(payload)
-
 @app.post("/research/v33-candidate")
 def v33_candidate_endpoint(payload: dict[str, Any]) -> dict[str, object]:
     model=ExecutionModel(float(payload.get("commission_r",0)),float(payload.get("slippage_r",0)),float(payload.get("spread_r",0)),float(payload.get("latency_r",0)))
     return run_v33(list(payload.get("trades",[])),model,probabilities=payload.get("probabilities"),outcomes=payload.get("outcomes"))
-
 @app.post("/research/edge-validation")
 def edge_validation_endpoint(payload: dict[str, Any]) -> dict[str, object]:
     cost_r=float(payload.get("cost_r_per_trade",0.0)); response={"research_only":True,"live_execution":False,"cost_r_per_trade":cost_r}
@@ -109,24 +109,20 @@ def edge_validation_endpoint(payload: dict[str, Any]) -> dict[str, object]:
         response["metrics"]=metrics(trades,cost_r).as_dict(); response["walk_forward"]=walk_forward(trades,int(payload.get("train_size",20)),int(payload.get("validation_size",10)),int(payload.get("oos_size",10)),cost_r)
         response["gate"]=validation_gate([w["oos"] for w in response["walk_forward"]],min_trades=int(payload.get("min_trades",30)),min_expectancy_r=float(payload.get("min_expectancy_r",0.0)),max_drawdown_r=float(payload.get("max_drawdown_r",10.0)),max_brier=float(payload.get("max_brier",0.25)))
     return response
-
 @app.post("/research/evidence-gate")
 def evidence_gate_endpoint(payload: dict[str, Any]) -> dict[str, object]:
     ep=payload.get("evidence",{}); evidence_req=EvidenceRequirements(**{k:bool(ep.get(k,False)) for k in EvidenceRequirements.__dataclass_fields__}); return evidence_gate(evidence_req,payload.get("oos_metrics"))
-
 @app.post("/research/market-replay")
 def market_replay_endpoint(payload: dict[str, Any]) -> dict[str, object]:
     rows=payload.get("bars",[]); validation=validate_dataset(rows); response={"research_only":True,"live_execution":False,"validation":validation}
     if validation["valid"]:
         bars=[coerce_bar(row) for row in rows]; response["dataset_fingerprint"]=dataset_fingerprint(bars); response["events"]=replay(bars)
     return response
-
 @app.get("/realtime/policy")
 def realtime_policy_endpoint() -> dict[str, Any]: return realtime_policy()
 @app.get("/realtime/status")
 def realtime_status() -> dict[str, Any]:
     status=source_status(); return {"policy":training_policy.snapshot(),"sources":status,"external_connection_verified":status["external_connection_verified_in_deployment"],"execution":"PAPER_ONLY","live_orders":False}
-
 @app.post("/realtime/tick")
 def realtime_tick(payload: dict[str, Any]) -> dict[str, Any]:
     tick=MarketTick(venue=str(payload["venue"]),symbol=str(payload["symbol"]),bid=float(payload["bid"]) if payload.get("bid") is not None else None,ask=float(payload["ask"]) if payload.get("ask") is not None else None,last=float(payload["last"]) if payload.get("last") is not None else None,volume=float(payload["volume"]) if payload.get("volume") is not None else None,exchange_ts_ms=int(payload["exchange_ts_ms"]) if payload.get("exchange_ts_ms") is not None else None,received_ts_ms=int(payload.get("received_ts_ms",datetime.now(timezone.utc).timestamp()*1000)),stream=str(payload.get("stream","normalized")),training_only=True)
@@ -138,7 +134,6 @@ def realtime_tick(payload: dict[str, Any]) -> dict[str, Any]:
     if price is None or price<=0: raise ValueError("tick requires a positive last price or bid/ask")
     result=paper.tick(tick.symbol,price,payload.get("timestamp"),payload.get("prev")); shadow=evidence.observe(asset=tick.symbol,price=price,timestamp=payload.get("timestamp"),bid=tick.bid,ask=tick.ask,volume=tick.volume,payload=payload); _persist_hourly()
     return {"tick":normalize_tick(tick),"paper":result,"shadow":shadow,"live_execution":False}
-
 @app.post("/decision")
 def decision(payload: dict[str, Any]) -> dict[str, Any]:
     candidate=TradeCandidate(**payload); result=core.decide(candidate); return {"decision":result,"rr":candidate.rr,"ev_r":candidate.ev_r,"risk_pct":risk.position_risk_pct(candidate.probability,result=="APPROVE_REDUCED_SIZE")}
@@ -157,7 +152,6 @@ def paper_lines() -> list[dict[str, Any]]: return paper.lines[-500:]
 def paper_report() -> dict[str, Any]:
     _persist_hourly(); current=telemetry.latest(); previous=telemetry.previous()
     return {"generated_at":datetime.now(timezone.utc).isoformat(),"agents":paper.agent_report(),"market":paper.market,"tick_count":paper.tick_count,"training_policy":training_policy.snapshot(),"hourly_telemetry":current.as_dict() if current else None,"hour_over_hour":telemetry.compare(current,previous) if current else {"available":False},"evidence_machine":evidence.snapshot()}
-
 @app.post("/account/register")
 def register_account(payload: dict[str, Any]) -> dict[str, Any]:
     account=live_gate.register(payload["account_id"],payload["provider"]); return {"account_id":account.account_id,"provider":account.provider,"verified":account.verified,"trading_confirmed":account.trading_confirmed}
