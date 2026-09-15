@@ -1,6 +1,8 @@
 name: AI-QUANTUM Overnight Market Audit
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
   schedule:
     - cron: '*/15 * * * *'
 permissions:
