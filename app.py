@@ -17,18 +17,20 @@ from src.realtime_api import normalize_tick, realtime_policy, source_status
 from src.realtime_market import MarketTick
 from src.realtime_training import RealtimeTrainingPolicy
 from src.risk_engine import RiskEngine
+from src.agent_decision_layer import run_agent_council
+from src.v33_candidate_gate import ExecutionModel, run_v33
 
-APP_VERSION = "32.2.0"
+APP_VERSION = "33.0.0"
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
 core = QuantumCore(); risk = RiskEngine(); adaptive = AdaptiveEngine(); paper = PaperWorld(); live_gate = ClientLiveGate(); training_policy = RealtimeTrainingPolicy()
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status":"ok","mode":"paper","training_mode":training_policy.mode,"live_trading":False,"emergency_stop":True,"version":APP_VERSION,"github_integrations":"enabled_research_only","edge_validation":"research_only","evidence_gate":"fail_closed_research_only","market_replay":"deterministic_research_only"}
+    return {"status":"ok","mode":"paper","training_mode":training_policy.mode,"live_trading":False,"emergency_stop":True,"version":APP_VERSION,"github_integrations":"enabled_research_only","edge_validation":"research_only","evidence_gate":"fail_closed_research_only","market_replay":"deterministic_research_only","agent_decision_layer":"q1-q8_research_only","v33_candidate":"research_only"}
 
 @app.get("/state")
 def state() -> dict[str, Any]:
-    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False}}
+    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False},"agent_decision_layer":{"research_only":True,"live_execution":False},"v33_candidate":{"research_only":True,"live_execution":False}}
 
 @app.get("/integrations/github")
 def github_integrations() -> dict[str, object]: return integration_registry()
@@ -40,6 +42,14 @@ def validate_pine(payload: dict[str, Any]) -> dict[str, object]:
 
 @app.post("/integrations/xau/features")
 def xau_feature_endpoint(payload: dict[str, Any]) -> dict[str, object]: return xau_features(payload.get("bars",[]))
+
+@app.post("/research/agent-council")
+def agent_council_endpoint(payload: dict[str, Any]) -> dict[str, object]: return run_agent_council(payload)
+
+@app.post("/research/v33-candidate")
+def v33_candidate_endpoint(payload: dict[str, Any]) -> dict[str, object]:
+    model=ExecutionModel(float(payload.get("commission_r",0)),float(payload.get("slippage_r",0)),float(payload.get("spread_r",0)),float(payload.get("latency_r",0)))
+    return run_v33(list(payload.get("trades",[])),model,probabilities=payload.get("probabilities"),outcomes=payload.get("outcomes"))
 
 @app.post("/research/edge-validation")
 def edge_validation_endpoint(payload: dict[str, Any]) -> dict[str, object]:
