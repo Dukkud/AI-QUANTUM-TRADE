@@ -1,0 +1,56 @@
+name: AI-QUANTUM Overnight Real-Data Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: overnight-real-data-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      APP_ENV: live-data
+      LIVE_TRADING: 'false'
+      EMERGENCY_STOP: 'true'
+      REAL_MARKET_DATA: 'true'
+      PAPER_EXECUTION: 'true'
+      NATIVE_QUOTES_REQUIRED: 'true'
+      RECONCILIATION_REQUIRED: 'true'
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_DATASET_ID: ${{ vars.KAGGLE_DATASET_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall src app.py
+      - name: Core and gate tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Real public market connectivity probe
+        run: |
+          python scripts/market_connectivity_probe.py
+      - name: Native data and paper-execution audit
+        env:
+          PYTHONPATH: .
+        run: python scripts/overnight_audit.py
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-audit-${{ github.run_number }}
+          path: reports/overnight/
+          if-no-files-found: ignore
+          retention-days: 14
