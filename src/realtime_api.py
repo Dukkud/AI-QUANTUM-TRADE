@@ -1,23 +1,22 @@
-"""v31.2 realtime training API surface.
+"""v31.3 realtime training API surface.
 
 Market-data/training only. This module deliberately has no order-placement API.
 """
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 
 from src.realtime_market import MarketTick
 
 TIMEFRAMES = ("1M", "5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W")
-ASSETS = ("XAUUSD", "BTCUSDT")
+ASSETS = ("BTCUSDT", "XAUUSD")
 AGENTS = tuple(f"Q{i}" for i in range(1, 9))
 
 
 def realtime_policy() -> dict[str, Any]:
     return {
-        "version": "31.2",
+        "version": "31.3",
         "mode": "TRAINING_ONLY",
         "execution": "PAPER_ONLY",
         "live_orders": False,
