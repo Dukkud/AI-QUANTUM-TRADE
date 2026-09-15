@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from src.agent_decision_layer import run_agent_council
+from src.agent_evidence_attribution import AgentEvidenceAttribution
 
 
 @dataclass
@@ -35,6 +36,7 @@ class EvidenceMachine:
         self.shadow: Dict[str, dict] = {}
         self.predictions: List[Prediction] = []
         self.events: List[dict] = []
+        self.attribution = AgentEvidenceAttribution()
 
     @staticmethod
     def _probability_from_payload(payload: dict) -> Optional[float]:
@@ -71,6 +73,12 @@ class EvidenceMachine:
                             "decision": council["quantum_decision"],
                             "evidence_count": council["evidence_count"],
                             "hard_veto": council["hard_veto"]})
+        self.attribution.record_council(
+            asset=asset,
+            timeframe=str(payload.get("timeframe", "UNKNOWN")),
+            timestamp=ts,
+            council=council,
+        )
 
         p = self._probability_from_payload(payload)
         if p is not None and payload.get("model_version") and payload.get("ml_calibrated"):
@@ -118,4 +126,7 @@ class EvidenceMachine:
             "settled_predictions": sum(p.outcome is not None for p in self.predictions),
             "brier": self.brier(),
             "events": len(self.events),
+            "agent_attribution": {
+                name: self.attribution.summary(name) for name in (f"Q{i}" for i in range(1, 9))
+            },
         }
