@@ -4,13 +4,15 @@ from src.realtime_training import ASSETS, AGENTS, TIMEFRAMES
 
 def test_health_is_paper_only():
     body = health()
-    assert body['version'] == '32.1.0'
+    assert body['version'] == '33.0.0'
     assert body['mode'] == 'paper'
     assert body['live_trading'] is False
     assert body['emergency_stop'] is True
     assert body['github_integrations'] == 'enabled_research_only'
     assert body['edge_validation'] == 'research_only'
     assert body['evidence_gate'] == 'fail_closed_research_only'
+    assert body['agent_decision_layer'] == 'q1-q8_research_only'
+    assert body['v33_candidate'] == 'research_only'
 
 
 def test_realtime_policy_exposes_all_assets_timeframes_and_agents():
