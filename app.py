@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from src.adaptive_engine import AdaptiveEngine
 from src.ai_quantum_core import QuantumCore, TradeCandidate
+from src.edge_validation import ResearchTrade, feature_attribution, metrics, validation_gate, walk_forward
 from src.github_integrations import integration_registry
 from src.github_integrations.pine_reference import validate_script
 from src.github_integrations.xau_research import features as xau_features
@@ -15,7 +16,7 @@ from src.realtime_market import MarketTick
 from src.realtime_training import RealtimeTrainingPolicy
 from src.risk_engine import RiskEngine
 
-APP_VERSION = "31.4.0"
+APP_VERSION = "32.0.0"
 
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
 core = QuantumCore()
@@ -36,6 +37,7 @@ def health() -> dict[str, Any]:
         "emergency_stop": True,
         "version": APP_VERSION,
         "github_integrations": "enabled_research_only",
+        "edge_validation": "research_only",
     }
 
 
@@ -50,6 +52,7 @@ def state() -> dict[str, Any]:
         "source_status": source_status(),
         "paper_world": paper.snapshot(),
         "github_integrations": integration_registry(),
+        "edge_validation": {"research_only": True, "live_execution": False},
     }
 
 
@@ -75,6 +78,41 @@ def xau_feature_endpoint(payload: dict[str, Any]) -> dict[str, object]:
     bars = payload.get("bars", [])
     result = xau_features(bars)
     return result
+
+
+@app.post("/research/edge-validation")
+def edge_validation_endpoint(payload: dict[str, Any]) -> dict[str, object]:
+    """Evaluate feature variants and/or causal walk-forward observations.
+
+    Input is research data supplied by an upstream backtest. This endpoint
+    never fetches a broker feed and never changes the live-gate state.
+    """
+    cost_r = float(payload.get("cost_r_per_trade", 0.0))
+    variants_payload = payload.get("variants")
+    response: dict[str, object] = {"research_only": True, "live_execution": False, "cost_r_per_trade": cost_r}
+    if variants_payload:
+        variants = {str(name): rows for name, rows in variants_payload.items()}
+        response["feature_attribution"] = feature_attribution(variants, cost_r)
+    rows = payload.get("trades")
+    if rows:
+        trades = [ResearchTrade(float(r["pnl_r"]), float(r.get("predicted_probability", 0.5)), str(r.get("feature_group", "baseline"))) for r in rows]
+        response["metrics"] = metrics(trades, cost_r).as_dict()
+        response["walk_forward"] = walk_forward(
+            trades,
+            int(payload.get("train_size", 20)),
+            int(payload.get("validation_size", 10)),
+            int(payload.get("oos_size", 10)),
+            cost_r,
+        )
+        oos = [window["oos"] for window in response["walk_forward"]]
+        response["gate"] = validation_gate(
+            oos,
+            min_trades=int(payload.get("min_trades", 30)),
+            min_expectancy_r=float(payload.get("min_expectancy_r", 0.0)),
+            max_drawdown_r=float(payload.get("max_drawdown_r", 10.0)),
+            max_brier=float(payload.get("max_brier", 0.25)),
+        )
+    return response
 
 
 @app.get("/realtime/policy")
