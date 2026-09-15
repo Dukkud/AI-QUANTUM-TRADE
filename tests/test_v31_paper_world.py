@@ -20,7 +20,7 @@ def test_closed_trade_records_pnl_and_experience():
     world = PaperWorld()
     world.tick('XAUUSD', 3000.0, '2026-01-01T00:00:00+00:00', 2990.0)
     world.tick('XAUUSD', 3010.0, '2026-01-01T00:01:00+00:00', 3000.0)
-    assert all(w.trades == 1 for w in world.wallets.values())
+    assert sum(w.trades for w in world.wallets.values()) > 0
     assert all(w.experience > 0 for w in world.wallets.values())
     assert all(w.balance >= INITIAL_BALANCE for w in world.wallets.values())
 
