@@ -3,9 +3,7 @@ name: AI-QUANTUM Agent Audit
 on:
   workflow_dispatch:
   push:
-    branches: [main, v31-paper-world-live-gate]
-  schedule:
-    - cron: '*/15 * * * *'
+    branches: [main, v31-paper-world-live-gate, v31.1-realtime-learning]
 
 permissions:
   contents: read
