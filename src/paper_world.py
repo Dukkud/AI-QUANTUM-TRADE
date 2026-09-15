@@ -18,6 +18,7 @@ class Position:
     agent: str; asset: str; direction: str; entry: float; stop: float; target: float
     opened_at: str; qty: float; status: str = 'OPEN'; exit: Optional[float] = None
     pnl: float = 0.0; exit_reason: Optional[str] = None
+    mae: float = 0.0; mfe: float = 0.0
 
 @dataclass
 class AgentWallet:
@@ -60,14 +61,20 @@ class PaperWorld:
                            'stop_loss':stop,'target':target,'status':'OPEN','opened_at':pos.opened_at})
         return pos
 
+    @staticmethod
+    def _update_excursion(pos, price):
+        excursion=(price-pos.entry)*pos.qty*(1 if pos.direction=='LONG' else -1)
+        pos.mae=min(pos.mae, excursion)
+        pos.mfe=max(pos.mfe, excursion)
+
     def _close(self,wallet,pos,price,reason):
         if pos.status!='OPEN': return
+        self._update_excursion(pos, price)
         raw=(price-pos.entry)*pos.qty*(1 if pos.direction=='LONG' else -1)
         pos.exit,pos.status,pos.pnl,pos.exit_reason=price,'CLOSED',raw,reason
         wallet.trades+=1
         if raw>0:
             wallet.wins+=1
-            # Geometric compounding: the profit rate is applied to the current balance.
             profit_rate=raw/max(wallet.balance,INITIAL_BALANCE)
             wallet.balance=max(INITIAL_BALANCE, wallet.balance*(1+PROFIT_COMPOUND_FACTOR*profit_rate))
             wallet.experience += 1.0+math.log1p(raw/INITIAL_BALANCE)
@@ -75,15 +82,13 @@ class PaperWorld:
             wallet.losses+=1; wallet.last_error=reason
             wallet.loss_debt += abs(raw); wallet.balance=max(INITIAL_BALANCE, wallet.balance+raw)
             wallet.experience += 0.5
-            # The visible wallet is protected at the $1,000 floor. Insolvency is
-            # tracked separately as loss_debt; when debt consumes the starting capital,
-            # the agent enters the same five-day quarantine/review cycle.
             if wallet.loss_debt >= INITIAL_BALANCE:
                 wallet.locked_until=(self.clock+timedelta(days=LOCK_DAYS)).isoformat()
         wallet.peak_balance=max(wallet.peak_balance,wallet.balance)
         wallet.history.append({'asset':pos.asset,'direction':pos.direction,'entry':pos.entry,'exit':price,
                                'pnl':raw,'reason':reason,'time':self.clock.isoformat(),
-                               'balance_after':wallet.balance,'loss_debt':wallet.loss_debt})
+                               'balance_after':wallet.balance,'loss_debt':wallet.loss_debt,
+                               'mae':pos.mae,'mfe':pos.mfe})
 
     def tick(self,asset,price,timestamp=None,prev=None):
         self.clock=datetime.fromisoformat(timestamp) if timestamp else datetime.now(timezone.utc)
@@ -91,6 +96,7 @@ class PaperWorld:
         for wallet in self.wallets.values():
             for pos in list(wallet.positions):
                 if pos.asset!=asset or pos.status!='OPEN': continue
+                self._update_excursion(pos, price)
                 hit_sl=price<=pos.stop if pos.direction=='LONG' else price>=pos.stop
                 hit_tp=price>=pos.target if pos.direction=='LONG' else price<=pos.target
                 if hit_sl: self._close(wallet,pos,pos.stop,'STOP_LOSS')
