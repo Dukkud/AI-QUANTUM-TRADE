@@ -106,7 +106,7 @@ class EvidenceMachine:
         return str((row or {}).get("agents", [{}])[0].get("evidence", {}).get("regime", "UNKNOWN"))
 
     def snapshot(self, asset: Optional[str] = None) -> dict:
-        row = self.shadow.get(asset) if asset else None
+        row = self.shadow.get(asset) if asset else (next(reversed(self.shadow.values())) if self.shadow else None)
         return {
             "research_only": True,
             "live_execution": False,
