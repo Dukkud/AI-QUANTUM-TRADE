@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from src.adaptive_engine import AdaptiveEngine
 from src.ai_quantum_core import QuantumCore, TradeCandidate
 from src.edge_validation import ResearchTrade, feature_attribution, metrics, validation_gate, walk_forward
+from src.evidence_gate import EvidenceRequirements, evidence_gate
 from src.github_integrations import integration_registry
 from src.github_integrations.pine_reference import validate_script
 from src.github_integrations.xau_research import features as xau_features
@@ -16,7 +17,7 @@ from src.realtime_market import MarketTick
 from src.realtime_training import RealtimeTrainingPolicy
 from src.risk_engine import RiskEngine
 
-APP_VERSION = "32.0.0"
+APP_VERSION = "32.1.0"
 
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
 core = QuantumCore()
@@ -38,6 +39,7 @@ def health() -> dict[str, Any]:
         "version": APP_VERSION,
         "github_integrations": "enabled_research_only",
         "edge_validation": "research_only",
+        "evidence_gate": "fail_closed_research_only",
     }
 
 
@@ -53,6 +55,7 @@ def state() -> dict[str, Any]:
         "paper_world": paper.snapshot(),
         "github_integrations": integration_registry(),
         "edge_validation": {"research_only": True, "live_execution": False},
+        "evidence_gate": {"research_only": True, "live_gate_enablement": False},
     }
 
 
@@ -113,6 +116,18 @@ def edge_validation_endpoint(payload: dict[str, Any]) -> dict[str, object]:
             max_brier=float(payload.get("max_brier", 0.25)),
         )
     return response
+
+
+@app.post("/research/evidence-gate")
+def evidence_gate_endpoint(payload: dict[str, Any]) -> dict[str, object]:
+    """Apply the v32.1 evidence gate; never enables live execution."""
+    evidence_payload = payload.get("evidence", {})
+    evidence = EvidenceRequirements(**{
+        key: bool(evidence_payload.get(key, False))
+        for key in EvidenceRequirements.__dataclass_fields__
+    })
+    oos_metrics = payload.get("oos_metrics")
+    return evidence_gate(evidence, oos_metrics)
 
 
 @app.get("/realtime/policy")
