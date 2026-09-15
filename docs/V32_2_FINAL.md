@@ -1,0 +1,1 @@
+Final v32.2 position: deterministic replay foundation implemented; local 5/5; GitHub CI pending; real-data validation pending; live blocked.
