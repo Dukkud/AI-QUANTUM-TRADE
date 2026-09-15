@@ -1,0 +1,100 @@
+"""AI-QUANTUM Q1-Q8 decision layer.
+
+Research/paper only. This module deliberately fails closed when required market,
+macro, quote, ML, or risk evidence is unavailable. It does not place orders.
+"""
+from __future__ import annotations
+from dataclasses import dataclass, asdict
+from math import sqrt
+from statistics import mean
+from typing import Any, Dict, Iterable, List, Optional
+
+AGENT_NAMES = {
+    "Q1": "Market Regime", "Q2": "Structure & Liquidity", "Q3": "Order Flow",
+    "Q4": "Quant / Statistics", "Q5": "Geometry / Cycles", "Q6": "Macro / News / Geopolitics",
+    "Q7": "ML / Pattern", "Q8": "Risk / Veto",
+}
+
+@dataclass(frozen=True)
+class AgentDecision:
+    agent: str; function: str; status: str; decision: str; confidence: float
+    evidence: Dict[str, Any]; reasons: List[str]; data_quality: str = "OK"
+    def as_dict(self): return asdict(self)
+
+def _clamp(x: float, lo=0.0, hi=1.0) -> float: return max(lo, min(hi, float(x)))
+def _bars(ctx): return list(ctx.get("bars") or [])
+def _close_series(ctx): return [float(b["close"]) for b in _bars(ctx) if "close" in b]
+def _ema(xs,n):
+    if not xs: raise ValueError("no prices")
+    a=2/(n+1); e=xs[0]
+    for x in xs[1:]: e=a*x+(1-a)*e
+    return e
+def _atr(ctx,n=14):
+    bs=_bars(ctx)
+    if len(bs)<2:return None
+    trs=[]; prev=float(bs[0]["close"])
+    for b in bs[1:]:
+        h,l=float(b["high"]),float(b["low"]); trs.append(max(h-l,abs(h-prev),abs(l-prev))); prev=float(b["close"])
+    return mean(trs[-n:]) if trs else None
+
+def q1_market_regime(ctx):
+    xs=_close_series(ctx)
+    if len(xs)<50:return AgentDecision("Q1",AGENT_NAMES["Q1"],"INSUFFICIENT_DATA","HOLD",0,{"bars":len(xs)},["Need >=50 causal closes"],"INSUFFICIENT")
+    e20,e50=_ema(xs,20),_ema(xs,50); atr=_atr(ctx); px=xs[-1]; slope=(xs[-1]-xs[-21])/xs[-21] if xs[-21] else 0
+    regime="RANGE" if abs(slope)<.0015 else "TREND_UP" if slope>0 and e20>e50 else "TREND_DOWN" if slope<0 and e20<e50 else "TRANSITION"
+    return AgentDecision("Q1",AGENT_NAMES["Q1"],"ACTIVE","BIAS_UP" if regime=="TREND_UP" else "BIAS_DOWN" if regime=="TREND_DOWN" else "HOLD",_clamp(abs(slope)*100+abs(e20-e50)/px*20),{"regime":regime,"ema20":e20,"ema50":e50,"atr":atr,"atr_pct":atr/px if atr else 0,"slope20":slope},[f"Regime={regime}"])
+
+def q2_structure(ctx):
+    bs=_bars(ctx)
+    if len(bs)<20:return AgentDecision("Q2",AGENT_NAMES["Q2"],"INSUFFICIENT_DATA","HOLD",0,{"bars":len(bs)},["Need >=20 bars"],"INSUFFICIENT")
+    hs=[float(b["high"]) for b in bs]; ls=[float(b["low"]) for b in bs]; m=len(bs)//2; oh,nh=max(hs[:m]),max(hs[m:]); ol,nl=min(ls[:m]),min(ls[m:]); last=float(bs[-1]["close"]); up=nh>oh; dn=nl<ol
+    return AgentDecision("Q2",AGENT_NAMES["Q2"],"ACTIVE","BIAS_UP" if up and not dn else "BIAS_DOWN" if dn and not up else "HOLD",_clamp((abs(nh-oh)+abs(nl-ol))/(last*.01)),{"BOS_UP":up,"BOS_DOWN":dn,"liquidity_sweep_up":last>oh,"liquidity_sweep_down":last<ol,"range_high":oh,"range_low":ol},["Causal half-sample structure comparison"])
+
+def q3_order_flow(ctx):
+    bid,ask=ctx.get("bid"),ctx.get("ask"); buy,sell=ctx.get("buy_volume"),ctx.get("sell_volume")
+    if bid is None or ask is None or buy is None or sell is None:return AgentDecision("Q3",AGENT_NAMES["Q3"],"DATA_UNAVAILABLE","HOLD",0,{"native_bid_ask":bid is not None and ask is not None,"native_volume":buy is not None and sell is not None},["Native bid/ask and buy/sell flow required; synthetic order flow forbidden"],"UNAVAILABLE")
+    total=float(buy)+float(sell); imb=(float(buy)-float(sell))/total if total else 0
+    return AgentDecision("Q3",AGENT_NAMES["Q3"],"ACTIVE","BIAS_UP" if imb>.05 else "BIAS_DOWN" if imb<-.05 else "HOLD",_clamp(abs(imb)*2),{"spread":float(ask)-float(bid),"imbalance":imb},["Native quote/flow evidence"])
+
+def q4_quant(ctx):
+    rs=[float(x) for x in (ctx.get("historical_r") or [])]; p=float(ctx.get("predicted_probability",.5)); cost=float(ctx.get("cost_r_per_trade",0))
+    if len(rs)<30:return AgentDecision("Q4",AGENT_NAMES["Q4"],"INSUFFICIENT_DATA","HOLD",0,{"trades":len(rs)},["Need >=30 realized R observations"],"INSUFFICIENT")
+    wins=[r for r in rs if r>0]; losses=[-r for r in rs if r<0]; aw=mean(wins) if wins else 0; al=mean(losses) if losses else 0; ev=p*aw-(1-p)*al-cost; v=mean([(r-mean(rs))**2 for r in rs])
+    return AgentDecision("Q4",AGENT_NAMES["Q4"],"ACTIVE","TRADE" if ev>0 else "HOLD",_clamp(1/(1+sqrt(v))),{"p":p,"avg_win":aw,"avg_loss":al,"ev_net":ev,"realized_mean_net":mean(rs)-cost,"variance":v,"win_rate":len(wins)/len(rs)},["EV_net > 0 required"] if ev<=0 else ["Positive net expectancy"])
+
+def q5_geometry(ctx):
+    xs=_close_series(ctx)
+    if len(xs)<34:return AgentDecision("Q5",AGENT_NAMES["Q5"],"INSUFFICIENT_DATA","HOLD",0,{"bars":len(xs)},["Need >=34 bars"],"INSUFFICIENT")
+    hi,lo=max(xs[-34:]),min(xs[-34:]); span=hi-lo; pos=(xs[-1]-lo)/span if span else .5
+    return AgentDecision("Q5",AGENT_NAMES["Q5"],"ACTIVE","BIAS_UP" if pos<.382 else "BIAS_DOWN" if pos>.618 else "HOLD",_clamp(abs(pos-.5)*2),{"range_high":hi,"range_low":lo,"position":pos,"fib_382":lo+span*.382,"fib_618":lo+span*.618},["34-bar causal range geometry"])
+
+def q6_macro(ctx):
+    if not ctx.get("macro_verified") or not ctx.get("news_verified"):return AgentDecision("Q6",AGENT_NAMES["Q6"],"DATA_UNAVAILABLE","HOLD",0,{"macro_verified":bool(ctx.get("macro_verified")),"news_verified":bool(ctx.get("news_verified"))},["Verified macro/news feed required; no invented geopolitical signal"],"UNAVAILABLE")
+    bias=str(ctx.get("macro_bias","NEUTRAL")); return AgentDecision("Q6",AGENT_NAMES["Q6"],"ACTIVE","BIAS_UP" if bias=="UP" else "BIAS_DOWN" if bias=="DOWN" else "HOLD",_clamp(float(ctx.get("macro_confidence",.5))),{"risk":str(ctx.get("macro_risk","NORMAL")),"bias":bias,"dxy":ctx.get("dxy"),"yields":ctx.get("yields")},["Verified macro/news evidence"])
+
+def q7_ml(ctx):
+    model,prob,cal=ctx.get("model_version"),ctx.get("ml_probability"),ctx.get("ml_calibrated",False)
+    if not model or prob is None or not cal:return AgentDecision("Q7",AGENT_NAMES["Q7"],"DATA_UNAVAILABLE","HOLD",0,{"model_version":model,"calibrated":cal},["Versioned calibrated model and dataset required"],"UNAVAILABLE")
+    p=float(prob); return AgentDecision("Q7",AGENT_NAMES["Q7"],"ACTIVE","BIAS_UP" if p>=.55 else "BIAS_DOWN" if p<=.45 else "HOLD",_clamp(abs(p-.5)*2),{"model_version":model,"probability_up":p,"dataset_fingerprint":ctx.get("dataset_fingerprint")},["Calibrated model probability"])
+
+def q8_risk(ctx,candidates=None):
+    vetoes=[]
+    if not ctx.get("data_quality_ok",False):vetoes.append("DATA_QUALITY")
+    if float(ctx.get("spread_pct",0))>float(ctx.get("max_spread_pct",.001)):vetoes.append("SPREAD")
+    if float(ctx.get("news_risk",0))>float(ctx.get("max_news_risk",.8)):vetoes.append("NEWS_RISK")
+    if float(ctx.get("drawdown_pct",0))>float(ctx.get("max_drawdown_pct",.10)):vetoes.append("DRAWDOWN")
+    if float(ctx.get("risk_pct",0))>float(ctx.get("max_risk_pct",.01)):vetoes.append("RISK_LIMIT")
+    if ctx.get("live_requested",False):
+        if not ctx.get("account_ready",False):vetoes.append("ACCOUNT_NOT_READY")
+        if ctx.get("emergency_stop",True):vetoes.append("EMERGENCY_STOP")
+    if candidates:
+        for c in candidates:
+            if c.status in ("DATA_UNAVAILABLE","INSUFFICIENT_DATA"):vetoes.append(f"{c.agent}_EVIDENCE")
+    return AgentDecision("Q8",AGENT_NAMES["Q8"],"ACTIVE","VETO" if vetoes else "CLEAR",1.0 if vetoes else .9,{"vetoes":vetoes},vetoes or ["Risk controls clear"])
+
+def run_agent_council(ctx):
+    agents=[q1_market_regime(ctx),q2_structure(ctx),q3_order_flow(ctx),q4_quant(ctx),q5_geometry(ctx),q6_macro(ctx),q7_ml(ctx)]; risk=q8_risk(ctx,agents); agents.append(risk)
+    hard_veto=risk.decision=="VETO"; usable=[a for a in agents[:7] if a.decision in ("BIAS_UP","BIAS_DOWN","TRADE") and a.confidence>0]
+    up=sum(a.confidence for a in usable if a.decision in ("BIAS_UP","TRADE")); down=sum(a.confidence for a in usable if a.decision=="BIAS_DOWN")
+    decision="HOLD" if hard_veto or not usable else "LONG" if up>down*1.15 else "SHORT" if down>up*1.15 else "HOLD"
+    return {"agents":[a.as_dict() for a in agents],"quantum_decision":decision,"hard_veto":hard_veto,"evidence_count":len(usable),"research_only":True,"live_execution":False}
