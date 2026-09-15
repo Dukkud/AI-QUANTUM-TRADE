@@ -3,7 +3,7 @@ from app import health, market_replay_endpoint
 
 def test_v32_2_health_and_replay_boundary():
     body = health()
-    assert body["version"] == "32.2.0"
+    assert body["version"] == "33.2.0"
     assert body["market_replay"] == "deterministic_research_only"
     result = market_replay_endpoint({"bars": [
         {"timestamp_ms": 0, "asset": "XAUUSD", "timeframe": "1M", "open": 2500, "high": 2502, "low": 2499, "close": 2501},
