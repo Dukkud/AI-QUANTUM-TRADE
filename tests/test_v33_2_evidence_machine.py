@@ -17,7 +17,7 @@ def test_ml_prediction_is_recorded_and_settled_causally():
     machine.observe(asset='BTCUSDT', price=101.0, timestamp='2026-01-01T00:01:00+00:00')
     assert machine.snapshot()['predictions'] == 1
     assert machine.snapshot()['settled_predictions'] == 1
-    assert machine.brier() == 0.04
+    assert abs(machine.brier() - 0.04) < 1e-12
 
 
 def test_invalid_probability_is_rejected():
