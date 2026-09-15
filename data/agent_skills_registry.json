@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "policy": "research_only",
+  "live_execution": false,
+  "source_catalog": "https://mcpservers.org/ru/agent-skills",
+  "skills": [
+    {"name":"web-research","source":"langchain-ai/deepagents","url":"https://mcpservers.org/ru/agent-skills/langchain-ai/web-research","install":"npx skills add https://github.com/langchain-ai/deepagents --skill web-research","role":["Q6","Q7"]},
+    {"name":"explore-data","source":"anthropics/knowledge-work-plugins","url":"https://mcpservers.org/ru/agent-skills/anthropic/explore-data","install":"npx skills add https://github.com/anthropics/knowledge-work-plugins --skill explore-data","role":["Q3","Q4","Q7","Q8"]},
+    {"name":"cuml-machine-learning","source":"langchain-ai/deepagents","url":"https://mcpservers.org/ru/agent-skills/langchain-ai/deepagents/cuml-machine-learning","install":"npx skills add https://github.com/langchain-ai/deepagents --skill cuml-machine-learning","role":["Q4","Q7"]},
+    {"name":"deep-agents-memory","source":"langchain-ai/langchain-skills","url":"https://mcpservers.org/agent-skills/langchain-ai/deep-agents-memory","install":"npx skills add https://github.com/langchain-ai/langchain-skills --skill deep-agents-memory","role":["Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8"]},
+    {"name":"code-review","source":"langchain-ai/deepagents","url":"https://mcpservers.org/ru/agent-skills/langchain-ai/deepagents/code-review","install":"npx skills add https://github.com/langchain-ai/deepagents --skill code-review","role":["Q8"]},
+    {"name":"writing-evals","source":"axiomhq/writing-evals","url":"https://mcpservers.org/ru/agent-skills/axiomhq/writing-evals","install":"npx skills add https://github.com/axiomhq/writing-evals --skill writing-evals","role":["Q4","Q7","Q8"]},
+    {"name":"data-visualization","source":"langchain-ai/deepagents","url":"https://mcpservers.org/ru/agent-skills/langchain-ai/data-visualization","install":"npx skills add https://github.com/langchain-ai/deepagents --skill data-visualization","role":["Q4","Q8"]},
+    {"name":"catalyst-calendar","source":"anthropics/financial-services","url":"https://mcpservers.org/ru/agent-skills/anthropic/financial-services/catalyst-calendar","install":"npx skills add https://github.com/anthropics/financial-services --skill catalyst-calendar","role":["Q6","Q8"]}
+  ]
+}
