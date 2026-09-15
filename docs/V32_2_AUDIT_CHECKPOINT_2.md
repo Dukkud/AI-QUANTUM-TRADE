@@ -1,0 +1,1 @@
+v32.2 checkpoint: local replay tests 5/5 PASS; external market data not yet validated; live execution blocked; next v32.3 execution reality after green CI.

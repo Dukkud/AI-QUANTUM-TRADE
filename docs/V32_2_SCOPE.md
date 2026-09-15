@@ -1,0 +1,1 @@
+Scope: deterministic market-data validation and replay only. No external fetch, no order execution, no profitability claim.

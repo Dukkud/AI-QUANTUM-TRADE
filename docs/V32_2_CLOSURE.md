@@ -1,0 +1,1 @@
+Closure rule: v32.2 is not a market-edge approval. It becomes fully closed only after GitHub CI passes and the replay is exercised on versioned real XAUUSD/BTCUSDT data.
