@@ -8,6 +8,7 @@ from src.agent_decision_layer import run_agent_council
 from src.agent_evidence_attribution import AgentEvidenceAttribution
 from src.evidence_persistence import JsonlEvidenceStore
 from src.skill_memory import registry as skill_registry, validate_registry
+from src.skill_evidence import SkillEvidenceLedger
 
 @dataclass
 class Prediction:
@@ -17,12 +18,13 @@ class EvidenceMachine:
     """Shadow evidence collection. It never gates paper learning or enables live orders."""
     def __init__(self,max_bars:int=500):
         self.max_bars=max_bars; self.bars:Dict[str,List[dict]]={}; self.shadow:Dict[str,dict]={}; self.predictions:List[Prediction]=[]; self.events=[]
-        self.attribution=AgentEvidenceAttribution(); self.prediction_store=JsonlEvidenceStore(os.getenv('AI_QUANTUM_PREDICTION_PATH','data/predictions.jsonl')); self._load_predictions()
+        self.attribution=AgentEvidenceAttribution(); self.skill_evidence=SkillEvidenceLedger(); self.prediction_store=JsonlEvidenceStore(os.getenv('AI_QUANTUM_PREDICTION_PATH','data/predictions.jsonl')); self._load_predictions()
 
     def _load_predictions(self):
-        for row in self.prediction_store.read_all():
+        rows=self.prediction_store.read_all()
+        for row in rows:
             if row.get('type')=='prediction': self.predictions.append(Prediction(row['asset'],row['timestamp'],float(row['probability_up']),row['model_version'],row.get('outcome')))
-        for row in self.prediction_store.read_all():
+        for row in rows:
             if row.get('type')=='prediction_settlement':
                 for p in self.predictions:
                     if p.asset==row['asset'] and p.timestamp==row['timestamp'] and p.outcome is None:p.outcome=row['outcome']
@@ -43,7 +45,18 @@ class EvidenceMachine:
         for key in ('buy_volume','sell_volume','macro_verified','news_verified','macro_bias','macro_confidence','macro_risk','dxy','yields','model_version','ml_probability','ml_calibrated','dataset_fingerprint'):
             if key in payload:ctx[key]=payload[key]
         council=run_agent_council(ctx); self.shadow[asset]={'timestamp':ts,**council}; self.events.append({'type':'shadow_council','asset':asset,'timestamp':ts,'decision':council['quantum_decision'],'evidence_count':council['evidence_count'],'hard_veto':council['hard_veto']})
-        self.attribution.record_council(asset=asset,timeframe=str(payload.get('timeframe','UNKNOWN')),timestamp=ts,council=council)
+        timeframe=str(payload.get('timeframe','UNKNOWN')); self.attribution.record_council(asset=asset,timeframe=timeframe,timestamp=ts,council=council)
+        by_name={str(a.get('agent')):a for a in council.get('agents',[])}
+        skills_by_agent={a:[] for a in (f'Q{i}' for i in range(1,9))}
+        for spec in skill_registry():
+            for agent in spec['agents']: skills_by_agent.setdefault(agent,[]).append(spec)
+        total=sum(max(float(a.get('confidence',0.0) or 0.0),0.0) for a in council.get('agents',[])) or 1.0
+        for agent,specs in skills_by_agent.items():
+            a=by_name.get(agent,{})
+            for spec in specs:
+                invoked=str(a.get('decision','DATA_UNAVAILABLE'))!='DATA_UNAVAILABLE'
+                confidence=float(a.get('confidence',0.0) or 0.0)
+                self.skill_evidence.record(skill_name=spec['name'],agent=agent,asset=asset,timeframe=timeframe,regime=str(a.get('evidence',{}).get('regime','UNKNOWN')),timestamp=ts,invoked=invoked,evidence_count=int(a.get('evidence_count',0) or 0),contribution=(confidence/total if invoked else 0.0))
         p=self._probability_from_payload(payload)
         if p is not None and payload.get('model_version') and payload.get('ml_calibrated'):
             pred=Prediction(asset,ts,p,str(payload['model_version'])); self.predictions.append(pred); self.prediction_store.append({'type':'prediction',**asdict(pred)})
@@ -64,18 +77,15 @@ class EvidenceMachine:
         return sum(vals)/len(vals) if vals else None
 
     def brier_history(self):
-        out=[]
-        for p in self.predictions:
-            if p.outcome is not None:out.append({'asset':p.asset,'timestamp':p.timestamp,'model_version':p.model_version,'probability_up':p.probability_up,'outcome':p.outcome,'brier':(p.probability_up-p.outcome)**2})
-        return out
+        return [{'asset':p.asset,'timestamp':p.timestamp,'model_version':p.model_version,'probability_up':p.probability_up,'outcome':p.outcome,'brier':(p.probability_up-p.outcome)**2} for p in self.predictions if p.outcome is not None]
 
     def latest_regime(self,asset=None):
         row=self.shadow.get(asset) if asset else (next(reversed(self.shadow.values())) if self.shadow else None)
         return str((row or {}).get('agents',[{}])[0].get('evidence',{}).get('regime','UNKNOWN'))
 
     def attribution_records(self): return self.attribution.records_as_dicts()
-    def integrity(self): return {'attribution':self.attribution.integrity(),'predictions':self.prediction_store.verify()}
+    def integrity(self): return {'attribution':self.attribution.integrity(),'predictions':self.prediction_store.verify(),'skills':self.skill_evidence.integrity()}
 
     def snapshot(self,asset=None):
         row=self.shadow.get(asset) if asset else (next(reversed(self.shadow.values())) if self.shadow else None)
-        return {'research_only':True,'live_execution':False,'assets_observed':sorted(self.bars),'bars':{k:len(v) for k,v in self.bars.items()},'latest_regime':self.latest_regime(asset),'latest_shadow':row,'predictions':len(self.predictions),'settled_predictions':sum(p.outcome is not None for p in self.predictions),'brier':self.brier(),'brier_history':self.brier_history()[-500:],'events':len(self.events),'integrity':self.integrity(),'agent_attribution':{name:self.attribution.summary(name) for name in (f'Q{i}' for i in range(1,9))},'skill_memory':{'registry':skill_registry(),'validation':validate_registry()}}
+        return {'research_only':True,'live_execution':False,'assets_observed':sorted(self.bars),'bars':{k:len(v) for k,v in self.bars.items()},'latest_regime':self.latest_regime(asset),'latest_shadow':row,'predictions':len(self.predictions),'settled_predictions':sum(p.outcome is not None for p in self.predictions),'brier':self.brier(),'brier_history':self.brier_history()[-500:],'events':len(self.events),'integrity':self.integrity(),'agent_attribution':{name:self.attribution.summary(name) for name in (f'Q{i}' for i in range(1,9))},'skill_memory':{'registry':skill_registry(),'validation':validate_registry()},'skill_evidence':self.skill_evidence.snapshot()}
