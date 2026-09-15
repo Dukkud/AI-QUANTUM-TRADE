@@ -44,7 +44,7 @@ def test_q8_hard_veto_is_explicit():
 def test_cost_model_is_additive():
     m=ExecutionModel(0.1,0.2,0.3,0.4)
     assert math.isclose(m.total_cost_r,1.0)
-    assert metrics([2,-1,1],m)["net_expectancy_r"]==math.approx(0.0, abs=1e-12) if False else True
+    assert math.isclose(metrics([2,-1,1],m)["net_expectancy_r"],0.0,abs_tol=1e-12)
 
 
 def test_brier_is_deterministic():
