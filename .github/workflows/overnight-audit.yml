@@ -1,41 +1,81 @@
-name: AI-QUANTUM Overnight Market Audit
+name: AI-QUANTUM Agent Audit
+
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-  schedule:
-    - cron: '*/15 * * * *'
+    branches: [main, v31-paper-world-live-gate, v31.1-realtime-learning]
+
 permissions:
   contents: read
   actions: read
+
 jobs:
-  overnight-audit:
+  agent-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
+      APP_ENV: paper
       LIVE_TRADING: 'false'
       EMERGENCY_STOP: 'true'
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install
+      - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Compile
+      - name: Compile all Python
         run: python -m compileall src scripts app.py
-      - name: Real market data + paper execution audit
-        run: PYTHONPATH=. python scripts/overnight_market_audit.py
+      - name: Run full v31 regression
+        run: python -m pytest -q
+      - name: Run 8-agent paper-world learning audit
+        run: python scripts/v31_agent_audit.py
       - name: Safety assertion
         run: |
+          test "$APP_ENV" = "paper"
           test "$LIVE_TRADING" = "false"
           test "$EMERGENCY_STOP" = "true"
+      - name: Validate audit report
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('overnight_report.json', encoding='utf-8'))
+          assert r['mode'] == 'PAPER_ONLY'
+          assert r['live_execution'] is False
+          assert r['aggregate']['all_invariants_pass'] is True
+          assert r['aggregate']['all_agents_traded'] is True
+          assert r['aggregate']['all_agents_have_experience'] is True
+          print('AUDIT_REPORT: PASS')
+          print('CONCLUSION:', r['conclusion'])
+          print('NEXT_STEP:', r['next_step'])
+          PY
+      - name: Publish audit conclusion
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r=json.load(open('overnight_report.json', encoding='utf-8'))
+          print('# AI-QUANTUM v31 agent audit')
+          print('')
+          print('**Status:**', r['conclusion'])
+          print('')
+          print('**Next step:**', r['next_step'])
+          print('')
+          print('| Metric | Result |')
+          print('|---|---:|')
+          print('| Agents | %d |' % r['scenario']['agents'])
+          print('| Ticks | %d |' % r['scenario']['ticks'])
+          print('| All invariants | %s |' % r['aggregate']['all_invariants_pass'])
+          print('| Agents with positive EV | %d/%d |' % (r['aggregate']['agents_with_positive_ev'], r['aggregate']['agents_total']))
+          print('| All agents traded | %s |' % r['aggregate']['all_agents_traded'])
+          print('| All agents learned | %s |' % r['aggregate']['all_agents_have_experience'])
+          PY
       - name: Secret pattern scan
         run: |
-          ! grep -RInE '(KAGGLE_API_TOKEN|password=|api[_-]?key[[:space:]]*[:=]|secret[[:space:]]*[:=])' . --exclude-dir=.git --exclude='*.md' --exclude='overnight_market_audit.py'
-      - name: Upload overnight report
+          ! grep -RInE '(-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----|password[[:space:]]*[:=]|api[_-]?key[[:space:]]*[:=]|secret[[:space:]]*[:=])' . --exclude-dir=.git --exclude='*.md' --exclude='*.json'
+      - name: Upload audit report
         uses: actions/upload-artifact@v4
         with:
-          name: overnight-market-audit-${{ github.run_id }}
+          name: v31-agent-audit-${{ github.run_id }}
           path: overnight_report.json
-          retention-days: 7
+          retention-days: 30
