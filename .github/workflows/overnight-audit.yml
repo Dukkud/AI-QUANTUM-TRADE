@@ -1,0 +1,39 @@
+name: AI-QUANTUM Overnight Market Audit
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  overnight-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      LIVE_TRADING: 'false'
+      EMERGENCY_STOP: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall src scripts app.py
+      - name: Real market data + paper execution audit
+        run: PYTHONPATH=. python scripts/overnight_market_audit.py
+      - name: Safety assertion
+        run: |
+          test "$LIVE_TRADING" = "false"
+          test "$EMERGENCY_STOP" = "true"
+      - name: Secret pattern scan
+        run: |
+          ! grep -RInE '(KAGGLE_API_TOKEN|password=|api[_-]?key[[:space:]]*[:=]|secret[[:space:]]*[:=])' . --exclude-dir=.git --exclude='*.md' --exclude='overnight_market_audit.py'
+      - name: Upload overnight report
+        uses: actions/upload-artifact@v4
+        with:
+          name: overnight-market-audit-${{ github.run_id }}
+          path: overnight_report.json
+          retention-days: 7
