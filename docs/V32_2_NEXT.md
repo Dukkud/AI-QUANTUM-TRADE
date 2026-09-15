@@ -1,0 +1,1 @@
+Next controlled stage: v32.3 Execution Reality Layer with native bid/ask, spread, commission, slippage, latency and fill-model evidence.
