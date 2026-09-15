@@ -1,0 +1,1 @@
+Review gate: after CI, execute deterministic replay on versioned real XAUUSD/BTCUSDT data. Do not promote on synthetic tests alone.
