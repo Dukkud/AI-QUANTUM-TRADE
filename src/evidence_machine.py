@@ -57,10 +57,9 @@ class EvidenceMachine:
         self.bars.setdefault(asset, []).append(row)
         self.bars[asset] = self.bars[asset][-self.max_bars:]
 
-        ctx = {"bars": self.bars[asset]}
+        ctx = {"bars": self.bars[asset], "data_quality_ok": True}
         if bid is not None and ask is not None:
             ctx.update({"bid": bid, "ask": ask})
-        # Native buy/sell flow is accepted only when explicitly supplied.
         for key in ("buy_volume", "sell_volume", "macro_verified", "news_verified",
                     "macro_bias", "macro_confidence", "macro_risk", "dxy", "yields",
                     "model_version", "ml_probability", "ml_calibrated", "dataset_fingerprint"):
@@ -88,7 +87,6 @@ class EvidenceMachine:
         if current_price == prev:
             return
         outcome = 1 if current_price > prev else 0
-        # A prediction is settled on the next observed price after its timestamp.
         for pred in self.predictions:
             if pred.asset == asset and pred.outcome is None and pred.timestamp != rows[-1]["timestamp"]:
                 pred.outcome = outcome
