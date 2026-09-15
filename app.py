@@ -21,7 +21,7 @@ from src.hourly_telemetry import HourlyTelemetryLedger, build_hourly_record
 from src.evidence_machine import EvidenceMachine
 from src.evidence_analytics import EvidenceAnalytics
 from src.forward_paper import ForwardObservation, ForwardPaperValidator
-APP_VERSION='33.9.0'
+APP_VERSION='34.1.0'
 app=FastAPI(title='AI-QUANTUM-TRADE',version=APP_VERSION)
 core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine(); paper=PaperWorld(); live_gate=ClientLiveGate(); training_policy=RealtimeTrainingPolicy(); telemetry=HourlyTelemetryLedger(); evidence=EvidenceMachine(); forward=ForwardPaperValidator(); _last_telemetry_hour=None
 
@@ -37,8 +37,12 @@ def _settle_new_paper_trades(before_counts):
     for agent,wallet in paper.wallets.items():
         start=before_counts.get(agent,0)
         for row in wallet.history[start:]:
-            settled += evidence.attribution.settle(asset=row['asset'],observation_timestamp=row.get('opened_at',row['time']),outcome_r=float(row.get('outcome_r',0.0)),mae_r=float(row.get('mae_r',0.0)),mfe_r=float(row.get('mfe_r',0.0)))
-            forward.observe(ForwardObservation(timestamp=row.get('opened_at',row['time']),asset=row['asset'],timeframe='UNKNOWN',decision=row['direction'],outcome_r=float(row.get('outcome_r',0.0)),cost_r=0.0,regime=evidence.latest_regime(row['asset'])))
+            ts=row.get('opened_at',row['time']); outcome=float(row.get('outcome_r',0.0)); mae=float(row.get('mae_r',0.0)); mfe=float(row.get('mfe_r',0.0))
+            settled += evidence.attribution.settle(asset=row['asset'],observation_timestamp=ts,outcome_r=outcome,mae_r=mae,mfe_r=mfe)
+            for sr in list(evidence.skill_evidence.records):
+                if sr.asset==row['asset'] and sr.timestamp==ts and sr.outcome_r is None:
+                    evidence.skill_evidence.settle(skill_name=sr.skill_name,agent=sr.agent,asset=sr.asset,timeframe=sr.timeframe,timestamp=sr.timestamp,outcome_r=outcome)
+            forward.observe(ForwardObservation(timestamp=ts,asset=row['asset'],timeframe='UNKNOWN',decision=row['direction'],outcome_r=outcome,cost_r=0.0,regime=evidence.latest_regime(row['asset'])))
     return settled
 
 def _max_drawdown(rows):
@@ -56,7 +60,7 @@ def _persist_hourly(force=False):
     record=build_hourly_record(hour_id=target_id,trades=trades,weights=weights,regime=evsnap.get('latest_regime','UNKNOWN'),learning={**learning,'evidence':evsnap},loss_debt=loss_debt,quarantine=quarantine,errors=errors,gate={'mode':'PAPER','live_execution':False,'shadow_decision':(evsnap.get('latest_shadow') or {}).get('quantum_decision','HOLD')},brier=evsnap.get('brier'),drawdown=_max_drawdown(rows)); telemetry.append(record); _last_telemetry_hour=target_id; return record
 
 @app.get('/health')
-def health()->dict[str,Any]: return {'status':'ok','mode':'paper','training_mode':training_policy.mode,'live_trading':False,'emergency_stop':True,'version':APP_VERSION,'github_integrations':'enabled_research_only','edge_validation':'research_only','evidence_gate':'fail_closed_research_only','market_replay':'deterministic_research_only','agent_decision_layer':'q1-q8_research_only','v33_candidate':'research_only','hourly_telemetry':'persistent_jsonl','evidence_machine':'non_blocking_shadow','evidence_analytics':'descriptive_research_only','agent_attribution':'persistent_chained_jsonl','calibration':'persistent_brier_research_only','forward_paper':'research_only'}
+def health()->dict[str,Any]: return {'status':'ok','mode':'paper','training_mode':training_policy.mode,'live_trading':False,'emergency_stop':True,'version':APP_VERSION,'github_integrations':'enabled_research_only','edge_validation':'research_only','evidence_gate':'fail_closed_research_only','market_replay':'deterministic_research_only','agent_decision_layer':'q1-q8_research_only','v33_candidate':'research_only','hourly_telemetry':'persistent_jsonl','evidence_machine':'non_blocking_shadow','evidence_analytics':'descriptive_research_only','agent_attribution':'persistent_chained_jsonl','calibration':'persistent_brier_research_only','forward_paper':'research_only','skill_learning':'persistent_research_only'}
 @app.get('/state')
 def state()->dict[str,Any]:
     _persist_hourly(); latest=telemetry.latest(); previous=telemetry.previous(); return {'utc':datetime.now(timezone.utc).isoformat(),'assets':['XAUUSD','BTCUSDT'],'timeframes':list(training_policy.target_timeframes),'agent_weights':adaptive.weights(),'realtime_training':training_policy.snapshot(),'source_status':source_status(),'paper_world':paper.snapshot(),'github_integrations':integration_registry(),'edge_validation':{'research_only':True,'live_execution':False},'evidence_gate':{'research_only':True,'live_gate_enablement':False},'market_replay':{'research_only':True,'live_execution':False},'agent_decision_layer':{'research_only':True,'live_execution':False},'v33_candidate':{'research_only':True,'live_execution':False},'hourly_telemetry':{'latest':latest.as_dict() if latest else None,'previous':previous.as_dict() if previous else None,'comparison':telemetry.compare(latest,previous) if latest else {'available':False}},'evidence_machine':evidence.snapshot(),'evidence_analytics':EvidenceAnalytics(evidence.attribution_records()).matrix(),'evidence_integrity':evidence.integrity(),'forward_paper':forward.snapshot()}
@@ -74,6 +78,12 @@ def evidence_analytics()->dict[str,Any]: return EvidenceAnalytics(evidence.attri
 def evidence_integrity()->dict[str,Any]: return evidence.integrity()
 @app.get('/evidence/brier')
 def evidence_brier()->dict[str,Any]: return {'research_only':True,'live_execution':False,'brier':evidence.brier(),'history':evidence.brier_history()[-1000:]}
+@app.get('/evidence/skills')
+def evidence_skills()->dict[str,Any]: return evidence.skill_evidence.snapshot()
+@app.get('/evidence/skills/matrix')
+def evidence_skills_matrix()->dict[str,Any]: return evidence.skill_evidence.matrix()
+@app.get('/evidence/skills/integrity')
+def evidence_skills_integrity()->dict[str,Any]: return evidence.skill_evidence.integrity()
 @app.post('/evidence/forward-paper')
 def evidence_forward_paper(payload:dict[str,Any])->dict[str,Any]:
     for row in payload.get('observations',[]): forward.observe(ForwardObservation(timestamp=str(row['timestamp']),asset=str(row['asset']),timeframe=str(row.get('timeframe','UNKNOWN')),decision=str(row['decision']),outcome_r=row.get('outcome_r'),cost_r=float(row.get('cost_r',0.0)),regime=str(row.get('regime','UNKNOWN'))))
@@ -140,7 +150,7 @@ def paper_trades()->dict[str,Any]: return {key:wallet.history for key,wallet in 
 def paper_lines()->list[dict[str,Any]]: return paper.lines[-500:]
 @app.get('/paper/report')
 def paper_report()->dict[str,Any]:
-    _persist_hourly(); current=telemetry.latest(); previous=telemetry.previous(); return {'generated_at':datetime.now(timezone.utc).isoformat(),'agents':paper.agent_report(),'market':paper.market,'tick_count':paper.tick_count,'training_policy':training_policy.snapshot(),'hourly_telemetry':current.as_dict() if current else None,'hour_over_hour':telemetry.compare(current,previous) if current else {'available':False},'evidence_machine':evidence.snapshot(),'evidence_analytics':EvidenceAnalytics(evidence.attribution_records()).matrix(),'forward_paper':forward.snapshot()}
+    _persist_hourly(); current=telemetry.latest(); previous=telemetry.previous(); return {'generated_at':datetime.now(timezone.utc).isoformat(),'agents':paper.agent_report(),'market':paper.market,'tick_count':paper.tick_count,'training_policy':training_policy.snapshot(),'hourly_telemetry':current.as_dict() if current else None,'hour_over_hour':telemetry.compare(current,previous) if current else {'available':False},'evidence_machine':evidence.snapshot(),'evidence_analytics':EvidenceAnalytics(evidence.attribution_records()).matrix(),'forward_paper':forward.snapshot(),'skill_evidence':evidence.skill_evidence.snapshot()}
 @app.post('/account/register')
 def register_account(payload:dict[str,Any])->dict[str,Any]:
     account=live_gate.register(payload['account_id'],payload['provider']); return {'account_id':account.account_id,'provider':account.provider,'verified':account.verified,'trading_confirmed':account.trading_confirmed}
