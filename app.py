@@ -17,10 +17,11 @@ from src.realtime_api import normalize_tick, realtime_policy, source_status
 from src.realtime_market import MarketTick
 from src.realtime_training import RealtimeTrainingPolicy
 from src.risk_engine import RiskEngine
+from src.status_model import ExecutionGate, RiskStatus, build_agent_status, build_all_agent_status
 
-APP_VERSION = "32.2.0"
+APP_VERSION = "32.3.0"
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
-core = QuantumCore(); risk = RiskEngine(); adaptive = AdaptiveEngine(); paper = PaperWorld(); live_gate = ClientLiveGate(); training_policy = RealtimeTrainingPolicy()
+core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine(); paper=PaperWorld(); live_gate=ClientLiveGate(); training_policy=RealtimeTrainingPolicy()
 
 @app.get("/health")
 def health() -> dict[str, Any]:
@@ -28,7 +29,18 @@ def health() -> dict[str, Any]:
 
 @app.get("/state")
 def state() -> dict[str, Any]:
-    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False}}
+    return {"utc":datetime.now(timezone.utc).isoformat(),"assets":["XAUUSD","BTCUSDT"],"timeframes":list(training_policy.target_timeframes),"agent_weights":adaptive.weights(),"realtime_training":training_policy.snapshot(),"source_status":source_status(),"paper_world":paper.snapshot(),"github_integrations":integration_registry(),"edge_validation":{"research_only":True,"live_execution":False},"evidence_gate":{"research_only":True,"live_gate_enablement":False},"market_replay":{"research_only":True,"live_execution":False},"status_model":{"version":"32.3.0","agent_status":build_all_agent_status(adaptive.agents),"system_execution_gate":ExecutionGate.LIVE_BLOCKED.value}}
+
+@app.get("/agents/status")
+def agents_status() -> dict[str, Any]:
+    """Canonical status matrix: performance is independent from execution authorization."""
+    return {"generated_at_utc":datetime.now(timezone.utc).isoformat(),"timezone":"UTC+5/Asia-Tashkent","agents":build_all_agent_status(adaptive.agents),"execution_gate":ExecutionGate.LIVE_BLOCKED.value,"real_orders":False}
+
+@app.get("/audit/status")
+def audit_status() -> dict[str, Any]:
+    """Machine-readable audit classification. Missing telemetry is UNVERIFIED, not DEGRADE."""
+    agents=build_all_agent_status(adaptive.agents)
+    return {"generated_at_utc":datetime.now(timezone.utc).isoformat(),"performance_decision":"UNVERIFIED","system_decision":"HOLD","execution_gate":ExecutionGate.LIVE_BLOCKED.value,"risk_gate":"FAIL_CLOSED","real_orders":0,"agents":agents,"rationale":"No validated hourly telemetry ledger is available; therefore performance is unverified and must not be promoted or degraded on missing data alone."}
 
 @app.get("/integrations/github")
 def github_integrations() -> dict[str, object]: return integration_registry()
@@ -96,7 +108,7 @@ def paper_trades() -> dict[str, Any]: return {key:wallet.history for key,wallet 
 @app.get("/paper/lines")
 def paper_lines() -> list[dict[str, Any]]: return paper.lines[-500:]
 @app.get("/paper/report")
-def paper_report() -> dict[str, Any]: return {"generated_at":datetime.now(timezone.utc).isoformat(),"agents":paper.agent_report(),"market":paper.market,"tick_count":paper.tick_count,"training_policy":training_policy.snapshot()}
+def paper_report() -> dict[str, Any]: return {"generated_at":datetime.now(timezone.utc).isoformat(),"agents":paper.agent_report(),"market":paper.market,"tick_count":paper.tick_count,"training_policy":training_policy.snapshot(),"status_model":{"performance":"UNVERIFIED","execution_gate":"LIVE_BLOCKED"}}
 
 @app.post("/account/register")
 def register_account(payload: dict[str, Any]) -> dict[str, Any]:
