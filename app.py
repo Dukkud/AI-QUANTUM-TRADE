@@ -38,11 +38,20 @@ def _paper_trades():
             rows.append({**h,"agent":wallet.agent,"mae":h.get("mae"),"mfe":h.get("mfe")})
     return rows
 
+def _max_drawdown(rows):
+    equity=0.0; peak=0.0; max_dd=0.0
+    for row in sorted(rows, key=lambda x: x.get("time", "")):
+        equity += float(row.get("pnl", 0.0)); peak=max(peak,equity); max_dd=max(max_dd,peak-equity)
+    return max_dd
+
 def _persist_hourly(force=False):
     global _last_telemetry_hour
-    hour=_utc_hour(paper.clock)
-    if not force and _last_telemetry_hour==hour.isoformat(): return None
-    rows=_paper_trades(); start=hour; end=hour+timedelta(hours=1)
+    current_hour=_utc_hour(paper.clock)
+    target_hour=current_hour if force else current_hour-timedelta(hours=1)
+    target_id=target_hour.isoformat()
+    latest=telemetry.latest()
+    if latest and latest.hour_id >= target_id: return None
+    rows=_paper_trades(); start=target_hour; end=target_hour+timedelta(hours=1)
     trades=[r for r in rows if start <= datetime.fromisoformat(r["time"]).astimezone(timezone.utc) < end]
     report=paper.agent_report(); errors=[f"{a}: {v['last_error']}" for a,v in report.items() if v.get("last_error")]
     loss_debt=sum(float(v.get("loss_debt",0)) for v in report.values())
@@ -50,8 +59,8 @@ def _persist_hourly(force=False):
     learning={a:{"experience":v.get("experience",0),"trades":v.get("trades",0)} for a,v in report.items()}
     weights=adaptive.weights()
     evsnap=evidence.snapshot()
-    record=build_hourly_record(hour_id=hour.isoformat(),trades=trades,weights=weights,regime=evsnap.get("latest_regime","UNKNOWN"),learning={**learning,"evidence":evsnap},loss_debt=loss_debt,quarantine=quarantine,errors=errors,gate={"mode":"PAPER","live_execution":False,"shadow_decision":(evsnap.get("latest_shadow") or {}).get("quantum_decision","HOLD")},brier=evsnap.get("brier"),drawdown=max([max(0,float(v.get("peak_balance",1000))-float(v.get("balance",1000))) for v in report.values()] or [0.0]))
-    telemetry.append(record); _last_telemetry_hour=hour.isoformat(); return record
+    record=build_hourly_record(hour_id=target_id,trades=trades,weights=weights,regime=evsnap.get("latest_regime","UNKNOWN"),learning={**learning,"evidence":evsnap},loss_debt=loss_debt,quarantine=quarantine,errors=errors,gate={"mode":"PAPER","live_execution":False,"shadow_decision":(evsnap.get("latest_shadow") or {}).get("quantum_decision","HOLD")},brier=evsnap.get("brier"),drawdown=_max_drawdown(rows))
+    telemetry.append(record); _last_telemetry_hour=target_id; return record
 
 @app.get("/health")
 def health() -> dict[str, Any]:
@@ -69,11 +78,10 @@ def hourly_telemetry() -> dict[str, Any]:
 
 @app.post("/telemetry/hourly/close")
 def close_hourly_telemetry() -> dict[str, Any]:
-    record=_persist_hourly(force=True); previous=telemetry.previous(); return {"record":record.as_dict() if record else None,"comparison":telemetry.compare(record,previous) if record and previous else {"available":False,"reason":"NO_PREVIOUS_HOUR"}}
+    record=_persist_hourly(force=True); current=telemetry.latest(); previous=telemetry.previous(); return {"record":record.as_dict() if record else (current.as_dict() if current else None),"comparison":telemetry.compare(current,previous) if current else {"available":False,"reason":"NO_RECORDS"}}
 
 @app.get("/evidence/machine")
-def evidence_machine() -> dict[str, Any]:
-    return evidence.snapshot()
+def evidence_machine() -> dict[str, Any]: return evidence.snapshot()
 
 @app.post("/integrations/pine/validate")
 def validate_pine(payload: dict[str, Any]) -> dict[str, object]:
@@ -82,10 +90,8 @@ def validate_pine(payload: dict[str, Any]) -> dict[str, object]:
 
 @app.get("/integrations/github")
 def github_integrations() -> dict[str, object]: return integration_registry()
-
 @app.post("/integrations/xau/features")
 def xau_feature_endpoint(payload: dict[str, Any]) -> dict[str, object]: return xau_features(payload.get("bars",[]))
-
 @app.post("/research/agent-council")
 def agent_council_endpoint(payload: dict[str, Any]) -> dict[str, object]: return run_agent_council(payload)
 
@@ -130,23 +136,17 @@ def realtime_tick(payload: dict[str, Any]) -> dict[str, Any]:
         elif tick.bid is not None: price=tick.bid
         elif tick.ask is not None: price=tick.ask
     if price is None or price<=0: raise ValueError("tick requires a positive last price or bid/ask")
-    result=paper.tick(tick.symbol,price,payload.get("timestamp"),payload.get("prev"))
-    shadow=evidence.observe(asset=tick.symbol,price=price,timestamp=payload.get("timestamp"),bid=tick.bid,ask=tick.ask,volume=tick.volume,payload=payload)
-    _persist_hourly()
+    result=paper.tick(tick.symbol,price,payload.get("timestamp"),payload.get("prev")); shadow=evidence.observe(asset=tick.symbol,price=price,timestamp=payload.get("timestamp"),bid=tick.bid,ask=tick.ask,volume=tick.volume,payload=payload); _persist_hourly()
     return {"tick":normalize_tick(tick),"paper":result,"shadow":shadow,"live_execution":False}
 
 @app.post("/decision")
 def decision(payload: dict[str, Any]) -> dict[str, Any]:
     candidate=TradeCandidate(**payload); result=core.decide(candidate); return {"decision":result,"rr":candidate.rr,"ev_r":candidate.ev_r,"risk_pct":risk.position_risk_pct(candidate.probability,result=="APPROVE_REDUCED_SIZE")}
-
 @app.get("/paper/world")
 def paper_world() -> dict[str, Any]: return paper.snapshot()
 @app.post("/paper/tick")
 def paper_tick(payload: dict[str, Any]) -> dict[str, Any]:
-    result=paper.tick(payload["asset"],float(payload["price"]),payload.get("timestamp"),payload.get("prev"))
-    shadow=evidence.observe(asset=payload["asset"],price=float(payload["price"]),timestamp=payload.get("timestamp"),payload=payload)
-    _persist_hourly()
-    return {**result,"shadow":shadow}
+    result=paper.tick(payload["asset"],float(payload["price"]),payload.get("timestamp"),payload.get("prev")); shadow=evidence.observe(asset=payload["asset"],price=float(payload["price"]),timestamp=payload.get("timestamp"),payload=payload); _persist_hourly(); return {**result,"shadow":shadow}
 @app.get("/paper/agents")
 def paper_agents() -> dict[str, Any]: return paper.agent_report()
 @app.get("/paper/trades")
