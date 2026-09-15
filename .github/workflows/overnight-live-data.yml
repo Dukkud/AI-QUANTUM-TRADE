@@ -26,6 +26,7 @@ jobs:
       RECONCILIATION_REQUIRED: 'true'
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       KAGGLE_DATASET_ID: ${{ vars.KAGGLE_DATASET_ID }}
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,21 +37,16 @@ jobs:
       - name: Compile
         run: python -m compileall src app.py
       - name: Core and gate tests
-        env:
-          PYTHONPATH: .
         run: pytest -q
-      - name: Real public market connectivity probe
+      - name: Overnight real-data paper audit
         run: |
-          python scripts/market_connectivity_probe.py
-      - name: Native data and paper-execution audit
-        env:
-          PYTHONPATH: .
-        run: python scripts/overnight_audit.py
+          mkdir -p reports/overnight
+          AUDIT_OUT=reports/overnight/overnight_report.json python scripts/overnight_market_audit.py
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: overnight-audit-${{ github.run_number }}
           path: reports/overnight/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
