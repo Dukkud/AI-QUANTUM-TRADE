@@ -7,6 +7,7 @@ import os
 from src.agent_decision_layer import run_agent_council
 from src.agent_evidence_attribution import AgentEvidenceAttribution
 from src.evidence_persistence import JsonlEvidenceStore
+from src.skill_memory import registry as skill_registry, validate_registry
 
 @dataclass
 class Prediction:
@@ -77,4 +78,4 @@ class EvidenceMachine:
 
     def snapshot(self,asset=None):
         row=self.shadow.get(asset) if asset else (next(reversed(self.shadow.values())) if self.shadow else None)
-        return {'research_only':True,'live_execution':False,'assets_observed':sorted(self.bars),'bars':{k:len(v) for k,v in self.bars.items()},'latest_regime':self.latest_regime(asset),'latest_shadow':row,'predictions':len(self.predictions),'settled_predictions':sum(p.outcome is not None for p in self.predictions),'brier':self.brier(),'brier_history':self.brier_history()[-500:],'events':len(self.events),'integrity':self.integrity(),'agent_attribution':{name:self.attribution.summary(name) for name in (f'Q{i}' for i in range(1,9))}}
+        return {'research_only':True,'live_execution':False,'assets_observed':sorted(self.bars),'bars':{k:len(v) for k,v in self.bars.items()},'latest_regime':self.latest_regime(asset),'latest_shadow':row,'predictions':len(self.predictions),'settled_predictions':sum(p.outcome is not None for p in self.predictions),'brier':self.brier(),'brier_history':self.brier_history()[-500:],'events':len(self.events),'integrity':self.integrity(),'agent_attribution':{name:self.attribution.summary(name) for name in (f'Q{i}' for i in range(1,9))},'skill_memory':{'registry':skill_registry(),'validation':validate_registry()}}
