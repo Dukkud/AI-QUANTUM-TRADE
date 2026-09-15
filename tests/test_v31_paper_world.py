@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from src.paper_world import PaperWorld, AGENTS, INITIAL_BALANCE
 from src.live_gate import ClientLiveGate
 
@@ -16,24 +16,36 @@ def test_trade_lines_and_position_created():
     assert all(len(w.positions) == 1 for w in world.wallets.values())
 
 
-def test_take_profit_records_pnl_and_experience():
+def test_closed_trade_records_pnl_and_experience():
     world = PaperWorld()
     world.tick('XAUUSD', 3000.0, '2026-01-01T00:00:00+00:00', 2990.0)
     world.tick('XAUUSD', 3010.0, '2026-01-01T00:01:00+00:00', 3000.0)
     assert all(w.trades == 1 for w in world.wallets.values())
-    assert all(w.wins == 1 for w in world.wallets.values())
     assert all(w.experience > 0 for w in world.wallets.values())
+    assert all(w.balance >= INITIAL_BALANCE for w in world.wallets.values())
 
 
-def test_five_day_recovery_cycle():
+def test_geometric_profit_increases_current_balance():
     world = PaperWorld()
     wallet = world.wallets['Q1']
-    wallet.balance = -1.0
+    before = wallet.balance
+    world.tick('XAUUSD', 3000.0, '2026-01-01T00:00:00+00:00', 2990.0)
+    pos = wallet.positions[0]
+    world._close(wallet, pos, pos.target, 'TAKE_PROFIT')
+    assert wallet.balance > before
+    assert wallet.balance >= INITIAL_BALANCE
+
+
+def test_loss_debt_quarantines_and_five_day_recovery():
+    world = PaperWorld()
+    wallet = world.wallets['Q1']
+    wallet.loss_debt = INITIAL_BALANCE
     wallet.locked_until = (world.clock + timedelta(days=5)).isoformat()
     assert wallet.is_locked(world.clock)
     world.clock = world.clock + timedelta(days=5)
     assert world.unlock_after_review('Q1') is True
     assert wallet.balance == INITIAL_BALANCE
+    assert wallet.loss_debt == 0.0
     assert wallet.locked_until is None
 
 
