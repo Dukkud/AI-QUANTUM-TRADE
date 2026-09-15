@@ -5,6 +5,9 @@ from fastapi import FastAPI
 
 from src.adaptive_engine import AdaptiveEngine
 from src.ai_quantum_core import QuantumCore, TradeCandidate
+from src.github_integrations import integration_registry
+from src.github_integrations.pine_reference import validate_script
+from src.github_integrations.xau_research import features as xau_features
 from src.live_gate import ClientLiveGate
 from src.paper_world import PaperWorld
 from src.realtime_api import normalize_tick, realtime_policy, source_status
@@ -12,7 +15,7 @@ from src.realtime_market import MarketTick
 from src.realtime_training import RealtimeTrainingPolicy
 from src.risk_engine import RiskEngine
 
-APP_VERSION = "31.3.0"
+APP_VERSION = "31.4.0"
 
 app = FastAPI(title="AI-QUANTUM-TRADE", version=APP_VERSION)
 core = QuantumCore()
@@ -32,6 +35,7 @@ def health() -> dict[str, Any]:
         "live_trading": False,
         "emergency_stop": True,
         "version": APP_VERSION,
+        "github_integrations": "enabled_research_only",
     }
 
 
@@ -45,7 +49,32 @@ def state() -> dict[str, Any]:
         "realtime_training": training_policy.snapshot(),
         "source_status": source_status(),
         "paper_world": paper.snapshot(),
+        "github_integrations": integration_registry(),
     }
+
+
+@app.get("/integrations/github")
+def github_integrations() -> dict[str, object]:
+    return integration_registry()
+
+
+@app.post("/integrations/pine/validate")
+def validate_pine(payload: dict[str, Any]) -> dict[str, object]:
+    result = validate_script(str(payload.get("script", "")))
+    return {
+        "ok": result.ok,
+        "errors": list(result.errors),
+        "warnings": list(result.warnings),
+        "matched_review_terms": list(result.matched_review_terms),
+        "research_only": True,
+    }
+
+
+@app.post("/integrations/xau/features")
+def xau_feature_endpoint(payload: dict[str, Any]) -> dict[str, object]:
+    bars = payload.get("bars", [])
+    result = xau_features(bars)
+    return result
 
 
 @app.get("/realtime/policy")
