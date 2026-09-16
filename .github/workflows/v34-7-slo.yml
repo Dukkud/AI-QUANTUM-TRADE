@@ -1,0 +1,19 @@
+name: v34.7 Observability SLO
+on:
+  push:
+    branches: ["feat/v34-7-observability-slo"]
+  pull_request:
+    branches: ["main"]
+permissions: {contents: read}
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env: {PYTHONPATH: ., LIVE_TRADING: "false", PAPER_EXECUTION: "true", ADAPTIVE_WEIGHT_UPDATES: "false"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -r requirements.txt
+      - run: python -m compileall -q src tests
+      - run: pytest -q tests/test_observability_slo.py
+      - run: test "$LIVE_TRADING" = "false" && test "$PAPER_EXECUTION" = "true" && test "$ADAPTIVE_WEIGHT_UPDATES" = "false"
