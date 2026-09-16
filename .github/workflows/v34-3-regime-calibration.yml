@@ -1,0 +1,29 @@
+name: v34.3 Regime Calibration
+on:
+  push:
+    branches: ["feat/v34-3-regime-calibration"]
+  pull_request:
+    branches: ["main"]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      LIVE_TRADING: "false"
+      PAPER_EXECUTION: "true"
+      ADAPTIVE_WEIGHT_UPDATES: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: python -m compileall -q src tests
+      - run: pytest -q tests/test_regime_calibration.py
+      - name: Safety invariants
+        run: |
+          test "$LIVE_TRADING" = "false"
+          test "$PAPER_EXECUTION" = "true"
+          test "$ADAPTIVE_WEIGHT_UPDATES" = "false"
