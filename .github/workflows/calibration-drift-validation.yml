@@ -1,0 +1,41 @@
+name: Calibration Drift Validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      LIVE_TRADING: 'false'
+      PAPER_EXECUTION: 'true'
+      ADAPTIVE_WEIGHT_UPDATES: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall src app.py
+      - name: Validate drift engine
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_calibration_drift.py tests/test_shadow_learning.py tests/test_evidence_events.py tests/test_evidence_ledger.py
+      - name: Verify shadow-only invariant
+        run: |
+          test "$LIVE_TRADING" = 'false'
+          test "$PAPER_EXECUTION" = 'true'
+          test "$ADAPTIVE_WEIGHT_UPDATES" = 'false'
+          python - <<'PY'
+          from src.calibration_drift import DriftSnapshot, compare
+          baseline = DriftSnapshot('Q1', 30, .6, .2, .4, .6)
+          current = DriftSnapshot('Q1', 30, .6, .2, .4, .6)
+          assert compare(baseline, current).status == 'STABLE'
+          print('calibration-drift PASS; adaptive weight updates remain disabled')
+          PY
