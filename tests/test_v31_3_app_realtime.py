@@ -1,4 +1,4 @@
-from app import APP_VERSION, health, realtime_policy_endpoint, realtime_status, realtime_tick
+from app import APP_VERSION, health, realtime_policy_endpoint, realtime_status_endpoint, realtime_tick
 from src.realtime_training import ASSETS, AGENTS, TIMEFRAMES
 
 
@@ -14,4 +14,4 @@ def test_realtime_tick_enters_paper_world_without_live_execution():
     assert body['tick']['venue']=='binance'; assert body['tick']['symbol']=='BTCUSDT'; assert body['tick']['feed_latency_ms']==10; assert body['tick']['training_only'] is True; assert body['paper']['market']['BTCUSDT']['price']==100000.0; assert body['shadow']['research_only'] is True; assert body['live_execution'] is False
 
 def test_realtime_status_never_advertises_external_connection_as_verified():
-    body=realtime_status(); assert body['external_connection_verified'] is False; assert body['execution']=='PAPER_ONLY'; assert body['live_orders'] is False
+    body=realtime_status_endpoint(); assert body['external_connection_verified'] is False; assert body['execution']=='PAPER_ONLY'; assert body['live_orders'] is False
