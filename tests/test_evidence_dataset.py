@@ -7,8 +7,10 @@ from src.rolling_oos import OOSObservation
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
+
 def obs(i):
     return OOSObservation((BASE + timedelta(hours=i)).isoformat(), "XAUUSD", "1H", "TREND", "Q1", 0.8, i % 2 == 0, 1.0)
+
 
 def test_manifest_is_deterministic_and_fingerprint_changes_on_content_change():
     data = [obs(i) for i in range(5)]
@@ -20,9 +22,11 @@ def test_manifest_is_deterministic_and_fingerprint_changes_on_content_change():
     changed[0] = OOSObservation(changed[0].timestamp_utc, "XAUUSD", "1H", "TREND", "Q1", 0.7, True, 1.0)
     assert fingerprint(changed) != a.sha256
 
+
 def test_duplicate_observations_fail_closed():
     with pytest.raises(ValueError, match="duplicate"):
         reject_duplicate_observations([obs(1), obs(1)])
+
 
 def test_embargo_separates_validation_and_oos():
     data = [obs(i) for i in range(12)]
@@ -30,7 +34,11 @@ def test_embargo_separates_validation_and_oos():
     assert windows
     w = windows[0]
     assert (datetime.fromisoformat(w.oos[0].timestamp_utc) - datetime.fromisoformat(w.validation[-1].timestamp_utc)) >= timedelta(hours=2)
-    assert len(w.embargo) == 2
+    # With hourly observations, validation ends at hour 6 and the first
+    # post-validation observation is hour 7; only hour 7 lies strictly inside
+    # the two-hour embargo [7, 8).
+    assert len(w.embargo) == 1
+
 
 def test_negative_embargo_rejected():
     with pytest.raises(ValueError):
