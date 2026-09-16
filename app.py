@@ -21,9 +21,11 @@ from src.hourly_telemetry import HourlyTelemetryLedger, build_hourly_record
 from src.evidence_machine import EvidenceMachine
 from src.evidence_analytics import EvidenceAnalytics
 from src.forward_paper import ForwardObservation, ForwardPaperValidator
-APP_VERSION='34.1.0'
+from src.tvremix_adapter import DEFAULT_SYMBOLS, SUPPORTED_TIMEFRAMES, TVRemixClient, TVRemixError
+
+APP_VERSION='34.2.0'
 app=FastAPI(title='AI-QUANTUM-TRADE',version=APP_VERSION)
-core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine(); paper=PaperWorld(); live_gate=ClientLiveGate(); training_policy=RealtimeTrainingPolicy(); telemetry=HourlyTelemetryLedger(); evidence=EvidenceMachine(); forward=ForwardPaperValidator(); _last_telemetry_hour=None
+core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine(); paper=PaperWorld(); live_gate=ClientLiveGate(); training_policy=RealtimeTrainingPolicy(); telemetry=HourlyTelemetryLedger(); evidence=EvidenceMachine(); forward=ForwardPaperValidator(); tvremix=TVRemixClient(); _last_telemetry_hour=None
 
 def _utc_hour(dt): return dt.astimezone(timezone.utc).replace(minute=0,second=0,microsecond=0)
 def _paper_trades():
@@ -60,10 +62,10 @@ def _persist_hourly(force=False):
     record=build_hourly_record(hour_id=target_id,trades=trades,weights=weights,regime=evsnap.get('latest_regime','UNKNOWN'),learning={**learning,'evidence':evsnap},loss_debt=loss_debt,quarantine=quarantine,errors=errors,gate={'mode':'PAPER','live_execution':False,'shadow_decision':(evsnap.get('latest_shadow') or {}).get('quantum_decision','HOLD')},brier=evsnap.get('brier'),drawdown=_max_drawdown(rows)); telemetry.append(record); _last_telemetry_hour=target_id; return record
 
 @app.get('/health')
-def health()->dict[str,Any]: return {'status':'ok','mode':'paper','training_mode':training_policy.mode,'live_trading':False,'emergency_stop':True,'version':APP_VERSION,'github_integrations':'enabled_research_only','edge_validation':'research_only','evidence_gate':'fail_closed_research_only','market_replay':'deterministic_research_only','agent_decision_layer':'q1-q8_research_only','v33_candidate':'research_only','hourly_telemetry':'persistent_jsonl','evidence_machine':'non_blocking_shadow','evidence_analytics':'descriptive_research_only','agent_attribution':'persistent_chained_jsonl','calibration':'persistent_brier_research_only','forward_paper':'research_only','skill_learning':'persistent_research_only'}
+def health()->dict[str,Any]: return {'status':'ok','mode':'paper','training_mode':training_policy.mode,'live_trading':False,'emergency_stop':True,'version':APP_VERSION,'github_integrations':'enabled_research_only','edge_validation':'research_only','evidence_gate':'fail_closed_research_only','market_replay':'deterministic_research_only','agent_decision_layer':'q1-q8_research_only','v33_candidate':'research_only','hourly_telemetry':'persistent_jsonl','evidence_machine':'non_blocking_shadow','evidence_analytics':'descriptive_research_only','agent_attribution':'persistent_chained_jsonl','calibration':'persistent_brier_research_only','forward_paper':'research_only','skill_learning':'persistent_research_only','tvremix':'research_only'}
 @app.get('/state')
 def state()->dict[str,Any]:
-    _persist_hourly(); latest=telemetry.latest(); previous=telemetry.previous(); return {'utc':datetime.now(timezone.utc).isoformat(),'assets':['XAUUSD','BTCUSDT'],'timeframes':list(training_policy.target_timeframes),'agent_weights':adaptive.weights(),'realtime_training':training_policy.snapshot(),'source_status':source_status(),'paper_world':paper.snapshot(),'github_integrations':integration_registry(),'edge_validation':{'research_only':True,'live_execution':False},'evidence_gate':{'research_only':True,'live_gate_enablement':False},'market_replay':{'research_only':True,'live_execution':False},'agent_decision_layer':{'research_only':True,'live_execution':False},'v33_candidate':{'research_only':True,'live_execution':False},'hourly_telemetry':{'latest':latest.as_dict() if latest else None,'previous':previous.as_dict() if previous else None,'comparison':telemetry.compare(latest,previous) if latest else {'available':False}},'evidence_machine':evidence.snapshot(),'evidence_analytics':EvidenceAnalytics(evidence.attribution_records()).matrix(),'evidence_integrity':evidence.integrity(),'forward_paper':forward.snapshot()}
+    _persist_hourly(); latest=telemetry.latest(); previous=telemetry.previous(); return {'utc':datetime.now(timezone.utc).isoformat(),'assets':['XAUUSD','BTCUSDT'],'timeframes':list(training_policy.target_timeframes),'agent_weights':adaptive.weights(),'realtime_training':training_policy.snapshot(),'source_status':source_status(),'tvremix':tvremix.status(),'paper_world':paper.snapshot(),'github_integrations':integration_registry(),'edge_validation':{'research_only':True,'live_execution':False},'evidence_gate':{'research_only':True,'live_gate_enablement':False},'market_replay':{'research_only':True,'live_execution':False},'agent_decision_layer':{'research_only':True,'live_execution':False},'v33_candidate':{'research_only':True,'live_execution':False},'hourly_telemetry':{'latest':latest.as_dict() if latest else None,'previous':previous.as_dict() if previous else None,'comparison':telemetry.compare(latest,previous) if latest else {'available':False}},'evidence_machine':evidence.snapshot(),'evidence_analytics':EvidenceAnalytics(evidence.attribution_records()).matrix(),'evidence_integrity':evidence.integrity(),'forward_paper':forward.snapshot()}
 @app.get('/telemetry/hourly')
 def hourly_telemetry()->dict[str,Any]:
     _persist_hourly(); current=telemetry.latest(); previous=telemetry.previous(); return {'schema_version':'1.0','latest':current.as_dict() if current else None,'previous':previous.as_dict() if previous else None,'comparison':telemetry.compare(current,previous) if current else {'available':False,'reason':'NO_RECORDS'},'records':len(telemetry.read_all()),'path':str(telemetry.path),'persistent':True}
@@ -91,6 +93,27 @@ def evidence_forward_paper(payload:dict[str,Any])->dict[str,Any]:
     return forward.snapshot()
 @app.get('/evidence/forward-paper')
 def get_forward_paper()->dict[str,Any]: return forward.snapshot()
+@app.get('/integrations/tvremix/status')
+def tvremix_status()->dict[str,Any]: return tvremix.status()
+@app.get('/integrations/tvremix/tools')
+def tvremix_tools()->dict[str,Any]:
+    try: return {'ok':True,'tools':tvremix.tools_list(),'research_only':True,'live_execution':False}
+    except TVRemixError as exc: return {'ok':False,'error':str(exc),'research_only':True,'live_execution':False}
+@app.post('/integrations/tvremix/validate')
+def tvremix_validate(payload:dict[str,Any])->dict[str,Any]:
+    from src.tvremix_adapter import TVRemixValidator
+    result=TVRemixValidator.validate(list(payload.get('rows',[])),str(payload.get('symbol','UNKNOWN')),str(payload.get('timeframe','UNKNOWN')),source='tvremix')
+    return {'ok':result.valid,'validation':result.as_dict(),'research_only':True,'live_execution':False}
+@app.post('/integrations/tvremix/ohlcv')
+def tvremix_ohlcv(payload:dict[str,Any])->dict[str,Any]:
+    asset=str(payload.get('asset','')).upper(); symbol=str(payload.get('symbol') or DEFAULT_SYMBOLS.get(asset,'')); timeframe=str(payload.get('timeframe','1H')).upper(); bars=int(payload.get('bars',500))
+    if not symbol: return {'ok':False,'error':'symbol is required or asset must be XAUUSD/BTCUSDT','research_only':True,'live_execution':False}
+    if timeframe not in SUPPORTED_TIMEFRAMES: return {'ok':False,'error':f'unsupported timeframe: {timeframe}','research_only':True,'live_execution':False}
+    try:
+        result=tvremix.get_ohlcv(symbol,timeframe,bars)
+        return {'ok':bool(result['validation']['valid']),'asset':asset or None,'symbol':symbol,'timeframe':timeframe,'rows':result['rows'],'validation':result['validation'],'research_only':True,'live_execution':False}
+    except (TVRemixError, ValueError) as exc:
+        return {'ok':False,'error':str(exc),'asset':asset or None,'symbol':symbol,'timeframe':timeframe,'research_only':True,'live_execution':False}
 @app.post('/integrations/pine/validate')
 def validate_pine(payload:dict[str,Any])->dict[str,object]:
     result=validate_script(str(payload.get('script',''))); return {'ok':result.ok,'errors':list(result.errors),'warnings':list(result.warnings),'matched_review_terms':list(result.matched_review_terms),'research_only':True}
