@@ -1,0 +1,35 @@
+name: v33.7 Lineage Validation
+
+on:
+  push:
+    branches: ["feat/v33-7-label-aware-lineage"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  lineage:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      LIVE_TRADING: "false"
+      PAPER_EXECUTION: "true"
+      ADAPTIVE_WEIGHT_UPDATES: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: python -m compileall -q src tests
+      - run: pytest -q tests/test_label_aware_lineage.py tests/test_evidence_dataset.py tests/test_rolling_oos.py tests/test_evidence_events.py tests/test_evidence_ledger.py tests/test_shadow_learning.py tests/test_calibration_drift.py
+      - name: Safety invariants
+        run: |
+          python - <<'PY'
+          import os
+          assert os.environ["LIVE_TRADING"] == "false"
+          assert os.environ["PAPER_EXECUTION"] == "true"
+          assert os.environ["ADAPTIVE_WEIGHT_UPDATES"] == "false"
+          PY
