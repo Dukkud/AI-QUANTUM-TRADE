@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from src.tvremix_adapter import (
@@ -47,7 +45,7 @@ def test_validator_rejects_duplicate_and_bad_ohlc():
 
 
 def test_client_discovers_tools_and_calls_ohlcv(monkeypatch):
-    monkeypatch.setenv("TVREMIX_API_KEY", "tvr_test_only")
+    monkeypatch.setenv("TVREMIX_API_KEY", "unit-test-token")
     calls = []
 
     def transport(url, headers, json, timeout):
@@ -72,7 +70,7 @@ def test_client_discovers_tools_and_calls_ohlcv(monkeypatch):
     assert result["validation"]["valid"] is True
     assert result["validation"]["rows"] == 3
     assert client.status()["secret_exposed"] is False
-    assert calls[0][1]["Authorization"] == "Bearer tvr_test_only"
+    assert calls[0][1]["Authorization"] == "Bearer unit-test-token"
 
 
 def test_client_fails_closed_without_key(monkeypatch):
@@ -84,7 +82,7 @@ def test_client_fails_closed_without_key(monkeypatch):
 
 def test_timeframes_are_bounded():
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("TVREMIX_API_KEY", "tvr_test_only")
+    monkeypatch.setenv("TVREMIX_API_KEY", "unit-test-token")
     try:
         client = TVRemixClient(TVRemixConfig(api_key_present=True), transport=lambda *a, **k: None)
         with pytest.raises(ValueError):
