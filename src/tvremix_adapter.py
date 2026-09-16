@@ -288,6 +288,13 @@ class TVRemixClient:
         result = self.call_tool("get_ohlcv", {"symbol": symbol, "interval": timeframe, "limit": bars})
         rows = _find_ohlcv_rows(result)
         validation = TVRemixValidator.validate(rows, symbol, timeframe)
+        try:
+            from src.tvremix_evidence import TVRemixEvidenceLedger
+            TVRemixEvidenceLedger().append({"symbol": symbol, "timeframe": timeframe, **validation.as_dict()})
+        except Exception as exc:
+            # Evidence persistence is non-blocking; source validation remains the hard result.
+            if os.getenv("AI_QUANTUM_STRICT_EVIDENCE", "0") == "1":
+                raise TVRemixError(f"TVRemix evidence persistence failed: {exc}") from exc
         return {"result": result, "rows": rows, "validation": validation.as_dict()}
 
     def status(self) -> dict[str, Any]:
