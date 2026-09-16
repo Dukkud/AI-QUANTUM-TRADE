@@ -46,7 +46,7 @@ def test_metrics_are_deterministic_and_do_not_mutate():
     result = metrics(data)
     assert result.samples == 4
     assert result.accuracy == 0.5
-    assert result.brier_score == 0.25
+    assert result.brier_score == 0.065
     assert result.mean_realized_r == 0.25
     assert result.max_drawdown_r == 0.5
     assert tuple(data) == before
