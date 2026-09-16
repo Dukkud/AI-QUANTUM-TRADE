@@ -1,0 +1,36 @@
+name: Rolling OOS Validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  rolling-oos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: .
+      LIVE_TRADING: "false"
+      PAPER_EXECUTION: "true"
+      ADAPTIVE_WEIGHT_UPDATES: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall src app.py
+      - name: Validate rolling OOS engine
+        run: pytest -q tests/test_rolling_oos.py tests/test_evidence_dataset.py tests/test_shadow_learning.py tests/test_calibration_drift.py tests/test_evidence_events.py tests/test_evidence_ledger.py
+      - name: Verify shadow-only invariants
+        run: |
+          python - <<'PY'
+          import os
+          assert os.environ["LIVE_TRADING"] == "false"
+          assert os.environ["PAPER_EXECUTION"] == "true"
+          assert os.environ["ADAPTIVE_WEIGHT_UPDATES"] == "false"
+          print("v33.6 safety invariants: PASS")
+          PY
