@@ -1,0 +1,36 @@
+name: Shadow Learning Validation
+
+on:
+  push:
+    branches: [main, 'feat/v33-4-shadow-learning-validation']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      LIVE_TRADING: 'false'
+      PAPER_EXECUTION: 'true'
+      ADAPTIVE_WEIGHT_UPDATES: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall src app.py
+      - run: pytest -q tests/test_shadow_learning.py tests/test_evidence_events.py tests/test_evidence_ledger.py
+      - name: Verify learning remains shadow-only
+        run: |
+          python - <<'PY'
+          from src.shadow_learning import LearningObservation, evaluate, learning_gate
+          m = evaluate([LearningObservation('Q1', 0.6, True, 1.0)] * 30)['Q1']
+          assert learning_gate(m) == 'OBSERVE'
+          assert __import__('os').environ['ADAPTIVE_WEIGHT_UPDATES'] == 'false'
+          print('shadow-learning gate PASS; adaptive weight updates remain disabled')
+          PY
