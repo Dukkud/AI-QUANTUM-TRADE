@@ -1,0 +1,73 @@
+name: TVRemix Validation
+
+on:
+  push:
+    branches:
+      - v34.2-tvremix-mcp
+  workflow_dispatch:
+    inputs:
+      asset:
+        description: "Asset to validate"
+        required: true
+        default: "BOTH"
+        type: choice
+        options:
+          - XAUUSD
+          - BTCUSDT
+          - BOTH
+      timeframe:
+        description: "Single timeframe; leave blank for 1H"
+        required: false
+        default: "1H"
+        type: choice
+        options:
+          - 1M
+          - 5M
+          - 15M
+          - 30M
+          - 1H
+          - 2H
+          - 4H
+          - 1D
+          - 1W
+      all_timeframes:
+        description: "Run the full nine-timeframe matrix"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: TVRemix read-only validation
+        env:
+          TVREMIX_API_KEY: ${{ secrets.TVREMIX_API_KEY }}
+        run: |
+          if [ -z "$TVREMIX_API_KEY" ]; then
+            echo "TVREMIX_API_KEY repository secret is not configured"
+            exit 2
+          fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            ARGS="--asset XAUUSD --timeframe 1H --bars 500"
+          else
+            ARGS="--asset ${{ inputs.asset }} --bars 500"
+            if [ "${{ inputs.all_timeframes }}" = "true" ]; then
+              ARGS="$ARGS --all-timeframes"
+            else
+              ARGS="$ARGS --timeframe ${{ inputs.timeframe }}"
+            fi
+          fi
+          python scripts/tvremix_probe.py $ARGS | tee tvremix-validation.json
+      - name: Upload validation metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvremix-validation
+          path: tvremix-validation.json
+          if-no-files-found: error
