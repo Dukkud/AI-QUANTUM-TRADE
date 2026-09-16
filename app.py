@@ -5,12 +5,12 @@ from src.risk_engine import RiskEngine
 from src.adaptive_engine import AdaptiveEngine
 from src.xau_data_sources import reconcile_xauusd
 
-app=FastAPI(title='AI-QUANTUM-TRADE',version='30.1.0')
+app=FastAPI(title='AI-QUANTUM-TRADE',version='30.2.0')
 core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine()
 
 @app.get('/health')
 def health():
-    return {'status':'ok','mode':'paper','live_trading':False,'emergency_stop':True,'version':'30.1.0'}
+    return {'status':'ok','mode':'paper','live_trading':False,'emergency_stop':True,'version':'30.2.0'}
 
 @app.get('/state')
 def state():
@@ -22,6 +22,10 @@ def xauusd_data():
 
 @app.post('/decision')
 def decision(payload: dict):
-    c=TradeCandidate(**payload)
+    candidate_payload = dict(payload)
+    if candidate_payload.get('asset') == 'XAUUSD':
+        source_state = reconcile_xauusd()
+        candidate_payload['external_data_fresh'] = bool(source_state.get('fresh', False))
+    c=TradeCandidate(**candidate_payload)
     d=core.decide(c)
     return {'decision':d,'rr':c.rr,'ev_r':c.ev_r,'risk_pct':risk.position_risk_pct(c.probability, d=='APPROVE_REDUCED_SIZE')}
