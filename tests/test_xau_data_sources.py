@@ -82,6 +82,8 @@ def test_yahoo_payload_is_parsed(monkeypatch):
 
 
 def test_reconcile_does_not_average_spot_and_futures(monkeypatch):
+    reference_time = datetime(2026, 9, 16, 10, tzinfo=timezone.utc).timestamp()
+    monkeypatch.setattr(m.time, "time", lambda: reference_time + 1.0)
     monkeypatch.setattr(
         m,
         "fetch_gold_api_xau",
@@ -100,6 +102,7 @@ def test_reconcile_does_not_average_spot_and_futures(monkeypatch):
     )
     result = m.reconcile_xauusd(max_age_seconds=120)
     assert result["status"] == "OK"
+    assert result["fresh"] is True
     assert result["futures_minus_spot"] == 10.0
     assert result["futures_minus_spot_pct"] > 0
     assert len(result["sources"]) == 2
