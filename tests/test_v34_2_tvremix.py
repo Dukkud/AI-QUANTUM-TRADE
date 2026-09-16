@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from src.tvremix_adapter import (
@@ -13,10 +15,33 @@ class FakeResponse:
     def __init__(self, payload, status=200, headers=None):
         self.status_code = status
         self.headers = {"content-type": "application/json", **(headers or {})}
-        self.text = __import__("json").dumps(payload)
+        self.text = json.dumps(payload)
 
     def json(self):
-        return __import__("json").loads(self.text)
+        return json.loads(self.text)
+
+
+def _transport_factory():
+    calls = []
+
+    def transport(url, headers, json, timeout):
+        calls.append((url, headers, json))
+        method = json["method"]
+        if method == "initialize":
+            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"protocolVersion": "2025-06-18"}}, headers={"Mcp-Session-Id": "test-session"})
+        if method == "notifications/initialized":
+            return FakeResponse({}, status=202)
+        if method == "tools/list":
+            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"tools": [{"name": "get_ohlcv"}]}})
+        if method == "tools/call":
+            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"data": [
+                {"timestamp": 1000, "open": 10, "high": 12, "low": 9, "close": 11, "volume": 5},
+                {"timestamp": 1060, "open": 11, "high": 13, "low": 10, "close": 12, "volume": 6},
+                {"timestamp": 1120, "open": 12, "high": 14, "low": 11, "close": 13, "volume": 7},
+            ]}})
+        raise AssertionError(method)
+
+    return transport, calls
 
 
 def test_validator_accepts_clean_causal_ohlcv():
@@ -44,33 +69,21 @@ def test_validator_rejects_duplicate_and_bad_ohlc():
     assert result.invalid_ohlc == 1
 
 
-def test_client_discovers_tools_and_calls_ohlcv(monkeypatch):
+def test_client_discovers_tools_and_calls_ohlcv(monkeypatch, tmp_path):
     monkeypatch.setenv("TVREMIX_API_KEY", "unit-test-token")
-    calls = []
-
-    def transport(url, headers, json, timeout):
-        calls.append((url, headers, json))
-        method = json["method"]
-        if method == "initialize":
-            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"protocolVersion": "2025-06-18"}}, headers={"Mcp-Session-Id": "test-session"})
-        if method == "notifications/initialized":
-            return FakeResponse({}, status=202)
-        if method == "tools/list":
-            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"tools": [{"name": "get_ohlcv"}]}})
-        if method == "tools/call":
-            return FakeResponse({"jsonrpc": "2.0", "id": json["id"], "result": {"data": [
-                {"timestamp": 1000, "open": 10, "high": 12, "low": 9, "close": 11, "volume": 5},
-                {"timestamp": 1060, "open": 11, "high": 13, "low": 10, "close": 12, "volume": 6},
-                {"timestamp": 1120, "open": 12, "high": 14, "low": 11, "close": 13, "volume": 7},
-            ]}})
-        raise AssertionError(method)
-
+    monkeypatch.setenv("AI_QUANTUM_TVREMIX_EVIDENCE_PATH", str(tmp_path / "tvremix.jsonl"))
+    transport, calls = _transport_factory()
     client = TVRemixClient(TVRemixConfig(endpoint=DEFAULT_ENDPOINT, api_key_present=True), transport=transport)
     result = client.get_ohlcv("OANDA:XAUUSD", "1M", 3)
     assert result["validation"]["valid"] is True
     assert result["validation"]["rows"] == 3
     assert client.status()["secret_exposed"] is False
     assert calls[0][1]["Authorization"] == "Bearer unit-test-token"
+    evidence = json.loads((tmp_path / "tvremix.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert evidence["symbol"] == "OANDA:XAUUSD"
+    assert evidence["timeframe"] == "1M"
+    assert evidence["valid"] is True
+    assert evidence["fingerprint"] == result["validation"]["fingerprint"]
 
 
 def test_client_fails_closed_without_key(monkeypatch):
@@ -80,12 +93,8 @@ def test_client_fails_closed_without_key(monkeypatch):
         client.initialize()
 
 
-def test_timeframes_are_bounded():
-    monkeypatch = pytest.MonkeyPatch()
+def test_timeframes_are_bounded(monkeypatch):
     monkeypatch.setenv("TVREMIX_API_KEY", "unit-test-token")
-    try:
-        client = TVRemixClient(TVRemixConfig(api_key_present=True), transport=lambda *a, **k: None)
-        with pytest.raises(ValueError):
-            client.get_ohlcv("OANDA:XAUUSD", "3M", 1)
-    finally:
-        monkeypatch.undo()
+    client = TVRemixClient(TVRemixConfig(api_key_present=True), transport=lambda *a, **k: None)
+    with pytest.raises(ValueError):
+        client.get_ohlcv("OANDA:XAUUSD", "3M", 1)
