@@ -1,9 +1,14 @@
+from datetime import datetime, timedelta, timezone
+
 from src.rolling_oos import OOSObservation, build_rolling_windows, metrics, segment
+
+
+BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def obs(i: int, asset: str = "XAUUSD", regime: str = "TREND") -> OOSObservation:
     return OOSObservation(
-        timestamp_utc=f"2026-01-01T00:{i:02d}:00+00:00",
+        timestamp_utc=(BASE + timedelta(hours=i)).isoformat(),
         asset=asset,
         timeframe="1H",
         regime=regime,
@@ -25,7 +30,7 @@ def test_rolling_windows_are_chronological_and_nonempty():
 
 
 def test_insufficient_history_produces_no_window():
-    assert build_rolling_windows([obs(i) for i in range(99)], train_size=50, validation_size=20, oos_size=20, step=10) == []
+    assert build_rolling_windows([obs(i) for i in range(89)], train_size=50, validation_size=20, oos_size=20, step=10) == []
 
 
 def test_segment_filters_exact_dimensions():
