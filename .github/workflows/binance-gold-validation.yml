@@ -1,0 +1,26 @@
+name: Binance Gold Validation
+
+on:
+  push:
+    branches: [v34.3-binance-gold-tokens]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: pytest -q tests/test_v34_3_binance_gold_tokens.py
+      - name: Binance read-only probe
+        run: python scripts/binance_gold_probe.py | tee binance-gold-validation.json
+      - name: Upload validation metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: binance-gold-validation
+          path: binance-gold-validation.json
