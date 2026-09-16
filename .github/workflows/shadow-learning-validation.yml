@@ -24,8 +24,13 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt
       - run: python -m compileall src app.py
-      - run: pytest -q tests/test_shadow_learning.py tests/test_evidence_events.py tests/test_evidence_ledger.py
+      - name: Validate shadow learning
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_shadow_learning.py tests/test_evidence_events.py tests/test_evidence_ledger.py
       - name: Verify learning remains shadow-only
+        env:
+          PYTHONPATH: .
         run: |
           python - <<'PY'
           from src.shadow_learning import LearningObservation, evaluate, learning_gate
