@@ -1,6 +1,9 @@
 name: TVRemix Validation
 
 on:
+  push:
+    branches:
+      - v34.2-tvremix-mcp
   workflow_dispatch:
     inputs:
       asset:
@@ -51,11 +54,15 @@ jobs:
             echo "TVREMIX_API_KEY repository secret is not configured"
             exit 2
           fi
-          ARGS="--asset ${{ inputs.asset }} --bars 500"
-          if [ "${{ inputs.all_timeframes }}" = "true" ]; then
-            ARGS="$ARGS --all-timeframes"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            ARGS="--asset XAUUSD --timeframe 1H --bars 500"
           else
-            ARGS="$ARGS --timeframe ${{ inputs.timeframe }}"
+            ARGS="--asset ${{ inputs.asset }} --bars 500"
+            if [ "${{ inputs.all_timeframes }}" = "true" ]; then
+              ARGS="$ARGS --all-timeframes"
+            else
+              ARGS="$ARGS --timeframe ${{ inputs.timeframe }}"
+            fi
           fi
           python scripts/tvremix_probe.py $ARGS | tee tvremix-validation.json
       - name: Upload validation metadata
