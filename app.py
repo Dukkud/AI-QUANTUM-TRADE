@@ -3,17 +3,22 @@ from datetime import datetime, timezone
 from src.ai_quantum_core import QuantumCore, TradeCandidate
 from src.risk_engine import RiskEngine
 from src.adaptive_engine import AdaptiveEngine
+from src.xau_data_sources import reconcile_xauusd
 
-app=FastAPI(title='AI-QUANTUM-TRADE',version='30.0.0')
+app=FastAPI(title='AI-QUANTUM-TRADE',version='30.1.0')
 core=QuantumCore(); risk=RiskEngine(); adaptive=AdaptiveEngine()
 
 @app.get('/health')
 def health():
-    return {'status':'ok','mode':'paper','live_trading':False,'emergency_stop':True,'version':'30.0.0'}
+    return {'status':'ok','mode':'paper','live_trading':False,'emergency_stop':True,'version':'30.1.0'}
 
 @app.get('/state')
 def state():
     return {'utc':datetime.now(timezone.utc).isoformat(),'assets':['XAUUSD','BTCUSDT'],'timeframes':['1M','5M','15M','30M','1H','2H','4H','1D','1W'],'agent_weights':adaptive.weights()}
+
+@app.get('/data/xauusd')
+def xauusd_data():
+    return reconcile_xauusd()
 
 @app.post('/decision')
 def decision(payload: dict):
