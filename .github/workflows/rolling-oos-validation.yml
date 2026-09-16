@@ -24,7 +24,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall src app.py
       - name: Validate rolling OOS engine
-        run: pytest -q tests/test_rolling_oos.py tests/test_shadow_learning.py tests/test_calibration_drift.py tests/test_evidence_events.py tests/test_evidence_ledger.py
+        run: pytest -q tests/test_rolling_oos.py tests/test_evidence_dataset.py tests/test_shadow_learning.py tests/test_calibration_drift.py tests/test_evidence_events.py tests/test_evidence_ledger.py
       - name: Verify shadow-only invariants
         run: |
           python - <<'PY'
