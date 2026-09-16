@@ -18,6 +18,7 @@ class TradeCandidate:
     data_quality: float
     news_risk: float = 0.0
     agent_agreement: float = 0.0
+    external_data_fresh: bool = True
 
     @property
     def rr(self) -> float:
@@ -32,6 +33,8 @@ class TradeCandidate:
 class QuantumCore:
     """Combines evidence without majority-vote logic and fails closed."""
     def decide(self, c: TradeCandidate) -> Decision:
+        if c.asset == "XAUUSD" and not c.external_data_fresh:
+            return "NO_TRADE"
         if c.data_quality < 0.95:
             return "NO_TRADE"
         if c.news_risk >= 0.85:

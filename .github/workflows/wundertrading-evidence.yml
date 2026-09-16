@@ -1,0 +1,47 @@
+name: AI-QUANTUM WunderTrading Evidence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wundertrading-evidence
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      WUNDERTRADING_API_KEY: ${{ secrets.WUNDERTRADING_API_KEY }}
+      WUNDERTRADING_API_SECRET: ${{ secrets.WUNDERTRADING_API_SECRET }}
+      LIVE_TRADING: 'false'
+      PAPER_EXECUTION: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - name: Tests
+        run: pytest -q
+      - name: Collect read-only evidence
+        run: |
+          mkdir -p reports/wundertrading
+          python - <<'PY' > reports/wundertrading/evidence.json
+          import json
+          from src.wundertrading_client import collect_evidence
+          print(json.dumps(collect_evidence(), ensure_ascii=False, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wundertrading-evidence-${{ github.run_number }}
+          path: reports/wundertrading/evidence.json
+          retention-days: 14
