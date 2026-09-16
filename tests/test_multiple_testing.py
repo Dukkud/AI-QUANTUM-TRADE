@@ -10,7 +10,7 @@ def test_linear_alpha_spending_is_monotonic():
 
 def test_holm_controls_multiple_comparisons():
     decisions = holm_bonferroni([0.01, 0.02, 0.20])
-    assert decisions == [True, False, False]
+    assert decisions == [True, True, False]
 
 
 def test_invalid_inputs_fail_closed():
