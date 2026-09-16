@@ -19,12 +19,44 @@ class WeightProposal:
 
 
 def _normalize(weights: Mapping[str, float]) -> dict[str, float]:
-    if not weights or any(v < 0 for v in weights.values()):
+    if not weights or any(float(v) < 0 for v in weights.values()):
         raise ValueError("weights must be non-negative and non-empty")
     total = sum(float(v) for v in weights.values())
     if total <= 0:
         raise ValueError("weight sum must be positive")
     return {k: float(v) / total for k, v in weights.items()}
+
+
+def _bounded_normalize(weights: Mapping[str, float], low: float, high: float) -> dict[str, float]:
+    if len(weights) * low > 1 or len(weights) * high < 1:
+        raise ValueError("weight bounds cannot contain a unit-sum distribution")
+    values = _normalize(weights)
+    fixed: dict[str, float] = {}
+    free = set(values)
+    remaining = 1.0
+    while free:
+        denominator = sum(values[j] for j in free)
+        proposed = {k: values[k] * remaining / denominator for k in free}
+        changed = False
+        for k, v in list(proposed.items()):
+            if v < low:
+                fixed[k] = low
+                remaining -= low
+                free.remove(k)
+                changed = True
+            elif v > high:
+                fixed[k] = high
+                remaining -= high
+                free.remove(k)
+                changed = True
+        if not changed:
+            fixed.update(proposed)
+            break
+        if remaining < -1e-12:
+            raise ValueError("weight bounds infeasible")
+    if abs(sum(fixed.values()) - 1.0) > 1e-9:
+        raise ValueError("bounded normalization failed")
+    return fixed
 
 
 def propose_weights(
@@ -45,9 +77,7 @@ def propose_weights(
         raise ValueError("performance scores must match agents and be within [0,1]")
     if not evidence_ready or stability_status != "STABLE":
         return WeightProposal(proposal_id, base, base, "HOLD", "evidence or stability gate not satisfied")
-    # Blend normalized performance into current weights, then enforce bounds.
     perf = _normalize(performance_score)
     raw = {k: base[k] * (1 - learning_rate) + perf[k] * learning_rate for k in base}
-    bounded = {k: min(max_weight, max(min_weight, v)) for k, v in raw.items()}
-    normalized = _normalize(bounded)
-    return WeightProposal(proposal_id, base, normalized, "PROPOSED", "shadow proposal only; production weights unchanged")
+    proposed = _bounded_normalize(raw, min_weight, max_weight)
+    return WeightProposal(proposal_id, base, proposed, "PROPOSED", "shadow proposal only; production weights unchanged")
