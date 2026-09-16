@@ -10,19 +10,32 @@ from typing import Any
 from src.realtime_market import MarketTick
 
 TIMEFRAMES = ("1M", "5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W")
-ASSETS = ("BTCUSDT", "XAUUSD")
+ASSETS = ("BTCUSDT", "XAUUSD", "PAXG", "XAUT")
 AGENTS = tuple(f"Q{i}" for i in range(1, 9))
 
 
 def realtime_policy() -> dict[str, Any]:
     return {
-        "version": "31.3",
+        "version": "34.3",
         "mode": "TRAINING_ONLY",
         "execution": "PAPER_ONLY",
         "live_orders": False,
         "assets": list(ASSETS),
         "timeframes": list(TIMEFRAMES),
         "agents": list(AGENTS),
+        "blocks": {
+            "gold_digital_metals": {
+                "label": "GOLD / DIGITAL METALS",
+                "members": ["XAUUSD", "PAXG", "XAUT"],
+                "buttons": [
+                    {"id": "xauusd", "label": "XAUUSD"},
+                    {"id": "paxg", "label": "PAXG"},
+                    {"id": "xaut", "label": "XAUT"},
+                ],
+                "binance_tokens": ["PAXGUSDT", "XAUTUSDT"],
+                "xauusd_policy": "independent_reference_source_required",
+            }
+        },
         "latency_model": {
             "exchange_timestamp": "required_when_provider_supplies_it",
             "receive_timestamp": "captured_locally",
@@ -45,7 +58,7 @@ def normalize_tick(tick: MarketTick) -> dict[str, Any]:
 def source_status() -> dict[str, Any]:
     """Static capability declaration; it does not claim external connectivity."""
     return {
-        "binance": {"market_data": True, "websocket": True, "orders": False},
+        "binance": {"market_data": True, "websocket": True, "orders": False, "gold_tokens": ["PAXGUSDT", "XAUTUSDT"]},
         "mt5": {"market_data": True, "ticks": True, "orders": False},
         "ccxt": {"exchange_adapters": True, "orders_enabled": False},
         "yahoo": {"role": "reference/macro", "orders": False},
