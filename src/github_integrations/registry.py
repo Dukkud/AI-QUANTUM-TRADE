@@ -27,6 +27,16 @@ def integration_registry() -> dict[str, object]:
             "execution": False,
             "models": ["EMA", "RSI", "ATR", "structure", "FVG", "regime_proxy"],
         },
+        "xauusd_market_data": {
+            "sources": ["GOLD_API", "YAHOO_FINANCE"],
+            "gold_api_symbol": "XAU",
+            "yahoo_symbol": "XAUUSD=X",
+            "role": "independent_spot_and_ohlc_validation",
+            "execution": False,
+            "research_only": True,
+            "weight_update": False,
+            "live_execution": False,
+        },
         "policy": {
             "live_orders": False,
             "paper_only": True,
