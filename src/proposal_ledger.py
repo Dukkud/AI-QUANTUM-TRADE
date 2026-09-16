@@ -25,34 +25,31 @@ class ProposalLedger:
         return tuple(self._records)
 
     def append(self, proposal_id: str, weights: Mapping[str, float], created_at_utc: str) -> ProposalRecord:
-        if not proposal_id or not created_at_utc or any(float(v) < 0 for v in weights.values()):
+        if not proposal_id or not created_at_utc or not weights or any(float(v) < 0 for v in weights.values()):
             raise ValueError("invalid proposal record")
         if any(r.proposal_id == proposal_id for r in self._records):
             raise ValueError("duplicate proposal_id")
-        payload = {
-            "proposal_id": proposal_id,
-            "parent_proposal_id": self._records[-1].proposal_id if self._records else None,
-            "weights": {k: float(v) for k, v in sorted(weights.items())},
-            "created_at_utc": created_at_utc,
-            "previous_hash": self._records[-1].sha256 if self._records else None,
-        }
+        parent = self._records[-1].proposal_id if self._records else None
+        previous_hash = self._records[-1].sha256 if self._records else None
+        payload = {"proposal_id": proposal_id, "parent_proposal_id": parent, "weights": {k: float(v) for k, v in sorted(weights.items())}, "created_at_utc": created_at_utc, "previous_hash": previous_hash}
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        record = ProposalRecord(payload["proposal_id"], payload["parent_proposal_id"], payload["weights"], created_at_utc, digest)
+        record = ProposalRecord(proposal_id, parent, payload["weights"], created_at_utc, digest)
         self._records.append(record)
         return record
 
     def verify(self) -> bool:
         previous = None
-        for r in self._records:
-            payload = {"proposal_id": r.proposal_id, "parent_proposal_id": r.parent_proposal_id, "weights": r.weights, "created_at_utc": r.created_at_utc, "previous_hash": previous}
+        for index, record in enumerate(self._records):
+            parent = self._records[index - 1].proposal_id if index else None
+            payload = {"proposal_id": record.proposal_id, "parent_proposal_id": parent, "weights": record.weights, "created_at_utc": record.created_at_utc, "previous_hash": previous}
             expected = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-            if expected != r.sha256 or r.parent_proposal_id != (self._records[self._records.index(r)-1].proposal_id if self._records.index(r) else None):
+            if expected != record.sha256 or record.parent_proposal_id != parent:
                 return False
-            previous = r.sha256
+            previous = record.sha256
         return True
 
     def rollback_target(self, proposal_id: str) -> ProposalRecord:
-        for r in self._records:
-            if r.proposal_id == proposal_id:
-                return r
+        for record in self._records:
+            if record.proposal_id == proposal_id:
+                return record
         raise KeyError(proposal_id)
