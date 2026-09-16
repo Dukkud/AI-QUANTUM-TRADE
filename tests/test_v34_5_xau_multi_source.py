@@ -32,7 +32,7 @@ def test_yahoo_chart_parsing():
 
 def test_invalid_yahoo_interval_fails_closed():
     try:
-        fetch_yahoo_xauusd("2h", 10)
+        fetch_yahoo_xauusd("10h", 10)
         assert False, "expected XAUDataError"
     except XAUDataError as exc:
         assert "unsupported Yahoo interval" in str(exc)
