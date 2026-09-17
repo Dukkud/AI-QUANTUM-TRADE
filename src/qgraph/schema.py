@@ -1,0 +1,3 @@
+NODE_TYPES = frozenset({"Agent", "Skill", "Feature", "Model", "Prediction", "Outcome", "Evidence", "Dataset", "Asset", "Timeframe", "Regime", "Experiment", "Proposal", "Test", "Bug", "Version", "Commit", "Document", "Source", "Policy", "Gate"})
+EDGE_TYPES = frozenset({"USES", "PRODUCES", "TRAINED_ON", "EVALUATED_BY", "SUPPORTS", "GOVERNED_BY", "HAS_OUTCOME", "BELONGS_TO", "USES_FEATURE", "TESTS", "PRODUCES_EVIDENCE", "CREATES_PROPOSAL", "CHECKED_BY", "REQUIRES_HUMAN_APPROVAL", "AFFECTS", "INTRODUCED_BY", "FIXED_BY", "REGRESSION_TEST", "DOCUMENTED_BY", "DEPENDS_ON"})
+TRUST_LEVELS = frozenset({"EXTRACTED", "INFERRED", "AMBIGUOUS"})
