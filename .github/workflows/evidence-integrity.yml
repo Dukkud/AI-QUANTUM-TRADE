@@ -1,0 +1,48 @@
+name: AI-QUANTUM Evidence Integrity Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feat/wundertrading-evidence-ingestion"]
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+      LIVE_TRADING: 'false'
+      PAPER_EXECUTION: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall src app.py
+      - name: Evidence tests
+        run: pytest -q tests/test_evidence_ledger.py tests/test_evidence_events.py tests/test_wundertrading_client.py
+      - name: Synthetic ledger integrity check
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from src.evidence_ledger import EvidenceLedger, PredictionEvidence
+          with TemporaryDirectory() as d:
+              ledger = EvidenceLedger(Path(d) / 'evidence.jsonl')
+              for i in range(3):
+                  ledger.append(PredictionEvidence(
+                      prediction_id=f'audit-{i}',
+                      observed_at_utc='2026-09-16T00:00:00Z',
+                      asset='XAUUSD', timeframe='1H', decision='WAIT', direction=None,
+                      entry=None, stop=None, target=None, probability=.5,
+                      agent_outputs={'Q1': {'regime': 'test'}}, data_quality=1.0))
+              ok, count, _ = ledger.verify()
+              assert ok and count == 3
+          print('evidence-integrity: PASS')
+          PY
